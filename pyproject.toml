@@ -4,25 +4,47 @@ build-backend = "hatchling.build"
 
 [project]
 name = "miosa"
-version = "0.4.0"
-description = "Python SDK for the MIOSA API — desktop infrastructure for AI agents"
+version = "1.0.0"
+description = "Official Python SDK for MIOSA — the AI cloud platform for sandboxes, desktop computers, deployments, managed databases, S3 storage, and volumes."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
     { name = "MIOSA", email = "dev@miosa.ai" },
 ]
-keywords = ["miosa", "ai", "agents", "desktop", "cloud", "vm", "sdk"]
+keywords = [
+    "miosa",
+    "ai",
+    "agents",
+    "sandbox",
+    "firecracker",
+    "microvm",
+    "computer-use",
+    "desktop",
+    "deploy",
+    "storage",
+    "database",
+    "postgres",
+    "mcp",
+    "cloud",
+    "vm",
+    "sdk",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]
 
@@ -55,8 +77,11 @@ dev = [
 
 [project.urls]
 Homepage = "https://miosa.ai"
-Documentation = "https://docs.miosa.ai/sdk/python"
-Repository = "https://github.com/robertohluna/miosa-python"
+Documentation = "https://miosa.ai/docs/sdks/python"
+Repository = "https://github.com/Miosa-osa/miosa-python"
+Issues = "https://github.com/Miosa-osa/miosa-python/issues"
+Changelog = "https://github.com/Miosa-osa/miosa-python/blob/main/CHANGELOG.md"
+Source = "https://github.com/Miosa-osa/miosa-python"
 
 [tool.hatch.build.targets.wheel]
 packages = ["miosa"]

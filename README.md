@@ -64,6 +64,67 @@ computer.destroy()
 | `miosa.webhooks` | Outgoing tenant webhooks — CRUD, test, delivery history |
 | `miosa.open_computers` | BYOC host management — register your own machines |
 
+## Agent SDK
+
+The Python SDK includes a small agent loop plus provider adapters and a MIOSA
+tool catalogue. This is the quickest path when you want an LLM to operate
+MIOSA computers directly.
+
+```python
+from miosa.agent import Agent, groq_provider
+
+agent = Agent(
+    provider=groq_provider(
+        api_key="gsk_...",
+        model="moonshotai/kimi-k2-instruct-0905",
+    ),
+    miosa_api_key="msk_live_...",
+)
+
+result = agent.run(
+    "Create a sandbox, write /workspace/hello.py, run it, show me the output, "
+    "then destroy the sandbox.",
+    max_iterations=10,
+)
+
+print(result.final_text)
+```
+
+Built-in agent tools expose the computer primitive in plain terms:
+
+| Tool | Does |
+|---|---|
+| `create_sandbox` | Boot a fast code sandbox computer for shell/Python/Node/files. |
+| `create_computer` | Boot a general MIOSA computer for GUI, services, previews, files. |
+| `list_computers` | List active computers, sandboxes, and desktops. |
+| `get_computer` | Fetch status, template, size, and public URL. |
+| `exec` / `exec_python` | Run bash or Python inside the computer. |
+| `read_file` / `write_file` / `list_files` | Work with files inside the computer. |
+| `preview_url` | Get the public HTTPS URL for a service port. |
+| `destroy_computer` | Release compute resources when done. |
+
+Provider factories include `openai_provider`, `groq_provider`,
+`deepseek_provider`, `openrouter_provider`, `together_provider`,
+`fireworks_provider`, `mistral_provider`, `cerebras_provider`,
+`perplexity_provider`, `xai_provider`, `ollama_provider`, `lm_studio_provider`,
+and `openai_compatible_provider` for custom routers.
+
+Sandbox-first builder examples live in `examples/`:
+
+See [BUILDER_GUIDE.md](./BUILDER_GUIDE.md) for the full “build your own
+Lovable with MIOSA sandboxes” product pattern.
+
+| Example | What it builds |
+|---|---|
+| `agent_sandbox_website_builder.py` | A Lovable-style website builder flow. |
+| `agent_sandbox_app_builder.py` | A small app builder with a dev server and preview. |
+| `agent_sandbox_artifact_builder.py` | Markdown/doc artifacts in `/workspace/artifacts`. |
+| `agent_sandbox_slide_deck_builder.py` | A deck workspace under `/workspace/deck`. |
+
+Set `GROQ_API_KEY` and `MIOSA_API_KEY`, then run one of the examples. They keep
+the sandbox alive with `miosa_tool_options={"allow_destroy": False}` so your app
+can show previews, inspect generated files, or publish later.
+
 ## File operations
 
 ```python
@@ -185,7 +246,7 @@ Exception hierarchy: `MiosaError` > `AuthenticationError` (401), `InsufficientCr
 
 - [Full documentation](https://miosa.ai/docs/sdks/python)
 - [Quickstart](https://miosa.ai/docs/quickstart)
-- [GitHub](https://github.com/robertohluna/miosa-python)
+- [GitHub](https://github.com/Miosa-osa/miosa-python)
 - [Contact](mailto:platform@miosa.ai)
 
 ## License
