@@ -374,6 +374,70 @@ class SandboxFiles:
         """Alias for :meth:`read`."""
         return self.read(path)
 
+    def tree(self, path: str = "/workspace", *, depth: int = 3) -> dict[str, Any]:
+        """GET /api/v1/sandboxes/{id}/files/tree — recursive directory tree.
+
+        Args:
+            path: Root path to tree. Defaults to ``"/workspace"``.
+            depth: Maximum recursion depth. Defaults to ``3``.
+
+        Returns:
+            Tree node dict with keys ``path``, ``type``, ``name``,
+            optional ``size``, ``modified_at``, ``children``.
+
+        Example::
+
+            tree = sb.files.tree("/workspace", depth=2)
+        """
+        response = self._sandbox._transport.request(
+            "GET",
+            f"/sandboxes/{self._sandbox.id}/files/tree",
+            params={"path": path, "depth": depth},
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    def write_many(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+        """POST /api/v1/sandboxes/{id}/files/write-many — batch file write.
+
+        Args:
+            files: List of ``{"path": str, "content": str | bytes}`` dicts.
+                   ``content`` values are auto-base64-encoded when bytes.
+
+        Returns:
+            ``{"written": [...], "failed": [...]}``
+
+        Example::
+
+            sb.files.write_many([
+                {"path": "/workspace/a.py", "content": "print(1)"},
+                {"path": "/workspace/b.py", "content": b"# bytes"},
+            ])
+        """
+        encoded: list[dict[str, Any]] = []
+        for item in files:
+            raw_content = item.get("content", item.get("data", ""))
+            if isinstance(raw_content, bytes):
+                b64 = base64.b64encode(raw_content).decode("ascii")
+            elif isinstance(raw_content, str):
+                b64 = base64.b64encode(raw_content.encode("utf-8")).decode("ascii")
+            else:
+                b64 = base64.b64encode(str(raw_content).encode("utf-8")).decode("ascii")
+            encoded.append({"path": item["path"], "content_base64": b64})
+        response = self._sandbox._transport.request(
+            "POST",
+            f"/sandboxes/{self._sandbox.id}/files/write-many",
+            json_body={"files": encoded},
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    def watch(self, path: str = "/workspace") -> Iterator[FileWatchEvent]:
+        """Alias for :meth:`watch_dir` per contracts (``sandbox.files.watch()``)."""
+        return self.watch_dir(path)
+
     def watch_dir(self, path: str) -> Iterator[FileWatchEvent]:
         """Watch a directory for filesystem change events via SSE.
 
@@ -409,6 +473,153 @@ class SandboxFiles:
                 is_dir=bool(payload.get("is_dir", False)),
                 old_path=payload.get("old_path"),
             )
+
+
+class SandboxProcesses:
+    """Long-running process management for a bound sandbox.
+
+    Wraps ``/api/v1/sandboxes/{id}/processes`` — start, list, get, stop,
+    fetch logs, and stream output of persistent processes.
+
+    Example::
+
+        proc = sb.processes.start("npm run dev", name="dev-server")
+        print(proc["pid"])
+        for line in sb.processes.stream(proc["pid"]):
+            print(line)
+        sb.processes.stop(proc["pid"])
+    """
+
+    def __init__(self, sandbox: "Sandbox") -> None:
+        self._sandbox = sandbox
+
+    def start(
+        self,
+        command: str,
+        *,
+        env: dict[str, str] | None = None,
+        name: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /api/v1/sandboxes/{id}/processes — spawn a persistent process."""
+        body: dict[str, Any] = {"command": command}
+        if env is not None:
+            body["env"] = env
+        if name is not None:
+            body["name"] = name
+        response = self._sandbox._transport.request(
+            "POST", f"/sandboxes/{self._sandbox.id}/processes", json_body=body
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    def list(self) -> list[dict[str, Any]]:
+        """GET /api/v1/sandboxes/{id}/processes — list running processes."""
+        response = self._sandbox._transport.request(
+            "GET", f"/sandboxes/{self._sandbox.id}/processes"
+        )
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            for key in ("data", "processes", "items"):
+                val = response.get(key)
+                if isinstance(val, list):
+                    return val
+        return []
+
+    def get(self, pid: int | str) -> dict[str, Any]:
+        """GET /api/v1/sandboxes/{id}/processes/{pid}."""
+        response = self._sandbox._transport.request(
+            "GET", f"/sandboxes/{self._sandbox.id}/processes/{pid}"
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    def stop(self, pid: int | str) -> None:
+        """DELETE /api/v1/sandboxes/{id}/processes/{pid} — SIGTERM then SIGKILL."""
+        self._sandbox._transport.request(
+            "DELETE", f"/sandboxes/{self._sandbox.id}/processes/{pid}"
+        )
+
+    def logs(self, pid: int | str, *, tail: int = 200) -> str:
+        """GET /api/v1/sandboxes/{id}/processes/{pid}/logs?tail=N — fetch log text."""
+        response = self._sandbox._transport.request(
+            "GET",
+            f"/sandboxes/{self._sandbox.id}/processes/{pid}/logs",
+            params={"tail": tail},
+        )
+        if isinstance(response, dict):
+            return str(response.get("data") or response.get("logs") or "")
+        return str(response or "")
+
+    def stream(self, pid: int | str) -> Iterator[dict[str, Any]]:
+        """GET /api/v1/sandboxes/{id}/processes/{pid}/stream (SSE) — live output."""
+        import json as _json
+
+        for raw_event in self._sandbox._transport.stream_sse(
+            f"/sandboxes/{self._sandbox.id}/processes/{pid}/stream"
+        ):
+            data_str = raw_event.get("data", "")
+            try:
+                payload: dict[str, Any] = _json.loads(data_str) if isinstance(data_str, str) else data_str
+            except (_json.JSONDecodeError, TypeError):
+                payload = {"line": data_str}
+            if isinstance(payload, dict):
+                yield payload
+
+
+class SandboxShare:
+    """Public share-URL management for a bound sandbox.
+
+    Wraps ``/api/v1/sandboxes/{id}/shares``.
+
+    Example::
+
+        share = sb.share.create(expires_in=3600, scope="read")
+        print(share["share_url"])
+        sb.share.revoke(share["share_id"])
+    """
+
+    def __init__(self, sandbox: "Sandbox") -> None:
+        self._sandbox = sandbox
+
+    def create(
+        self,
+        *,
+        expires_in: int | None = None,
+        scope: str = "read",
+    ) -> dict[str, Any]:
+        """POST /api/v1/sandboxes/{id}/shares → {share_id, share_url, expires_at, scope}."""
+        body: dict[str, Any] = {"scope": scope}
+        if expires_in is not None:
+            body["expires_in"] = expires_in
+        response = self._sandbox._transport.request(
+            "POST", f"/sandboxes/{self._sandbox.id}/shares", json_body=body
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    def list(self) -> list[dict[str, Any]]:
+        """GET /api/v1/sandboxes/{id}/shares."""
+        response = self._sandbox._transport.request(
+            "GET", f"/sandboxes/{self._sandbox.id}/shares"
+        )
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            for key in ("data", "shares", "items"):
+                val = response.get(key)
+                if isinstance(val, list):
+                    return val
+        return []
+
+    def revoke(self, share_id: str) -> None:
+        """DELETE /api/v1/sandboxes/{id}/shares/{share_id}."""
+        self._sandbox._transport.request(
+            "DELETE", f"/sandboxes/{self._sandbox.id}/shares/{share_id}"
+        )
 
 
 class SandboxPreview:
@@ -498,11 +709,12 @@ class SandboxEvents:
 
 
 class SandboxEnv:
-    """Per-sandbox env-vars (``GET /sandboxes/:id/env``).
+    """Per-sandbox env-vars.
 
-    The backend currently exposes a read-only listing — there is no
-    per-name CRUD route for sandbox env. Use ``Sandbox.create(env=...)``
-    or template build-spec env to set values.
+    Supports full CRUD per the contracts:
+    - ``GET /sandboxes/:id/env`` — list all vars
+    - ``PUT /sandboxes/:id/env`` — bulk set / replace vars
+    - ``DELETE /sandboxes/:id/env/:key`` — delete one var
     """
 
     def __init__(self, sandbox: Sandbox) -> None:
@@ -515,6 +727,32 @@ class SandboxEnv:
         if isinstance(response, dict) and "data" in response and len(response) <= 2:
             return response["data"]
         return response
+
+    # Alias for contracts parity
+    get = list
+
+    def set(self, vars: list[dict[str, Any]]) -> dict[str, Any]:
+        """PUT /api/v1/sandboxes/{id}/env — bulk-set env vars.
+
+        Args:
+            vars: List of ``{"key": str, "value": str, "encrypted"?: bool}``.
+
+        Example::
+
+            sb.env.set([{"key": "DEBUG", "value": "1"}])
+        """
+        response = self._sandbox._transport.request(
+            "PUT", f"/sandboxes/{self._sandbox.id}/env", json_body={"vars": vars}
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    def delete(self, key: str) -> None:
+        """DELETE /api/v1/sandboxes/{id}/env/{key} — remove one env var."""
+        self._sandbox._transport.request(
+            "DELETE", f"/sandboxes/{self._sandbox.id}/env/{key}"
+        )
 
 
 class SandboxTerminal:
@@ -1025,6 +1263,38 @@ class AsyncSandboxFiles:
         """Alias for :meth:`read`."""
         return await self.read(path)
 
+    async def tree(self, path: str = "/workspace", *, depth: int = 3) -> dict[str, Any]:
+        """GET /api/v1/sandboxes/{id}/files/tree."""
+        response = await self._sandbox._transport.request(
+            "GET",
+            f"/sandboxes/{self._sandbox.id}/files/tree",
+            params={"path": path, "depth": depth},
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    async def write_many(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+        """POST /api/v1/sandboxes/{id}/files/write-many — batch file write."""
+        encoded: list[dict[str, Any]] = []
+        for item in files:
+            raw_content = item.get("content", item.get("data", ""))
+            if isinstance(raw_content, bytes):
+                b64 = base64.b64encode(raw_content).decode("ascii")
+            elif isinstance(raw_content, str):
+                b64 = base64.b64encode(raw_content.encode("utf-8")).decode("ascii")
+            else:
+                b64 = base64.b64encode(str(raw_content).encode("utf-8")).decode("ascii")
+            encoded.append({"path": item["path"], "content_base64": b64})
+        response = await self._sandbox._transport.request(
+            "POST",
+            f"/sandboxes/{self._sandbox.id}/files/write-many",
+            json_body={"files": encoded},
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
     async def watch_dir(self, path: str) -> AsyncIterator[FileWatchEvent]:
         """Watch a directory for filesystem change events via SSE.
 
@@ -1058,6 +1328,128 @@ class AsyncSandboxFiles:
                 is_dir=bool(payload.get("is_dir", False)),
                 old_path=payload.get("old_path"),
             )
+
+    async def watch(self, path: str = "/workspace") -> AsyncIterator[FileWatchEvent]:
+        """Alias for :meth:`watch_dir` per contracts."""
+        async for event in self.watch_dir(path):
+            yield event
+
+
+class AsyncSandboxProcesses:
+    """Async long-running process management for a bound sandbox."""
+
+    def __init__(self, sandbox: "AsyncSandbox") -> None:
+        self._sandbox = sandbox
+
+    async def start(
+        self,
+        command: str,
+        *,
+        env: dict[str, str] | None = None,
+        name: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"command": command}
+        if env is not None:
+            body["env"] = env
+        if name is not None:
+            body["name"] = name
+        response = await self._sandbox._transport.request(
+            "POST", f"/sandboxes/{self._sandbox.id}/processes", json_body=body
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    async def list(self) -> list[dict[str, Any]]:
+        response = await self._sandbox._transport.request(
+            "GET", f"/sandboxes/{self._sandbox.id}/processes"
+        )
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            for key in ("data", "processes", "items"):
+                val = response.get(key)
+                if isinstance(val, list):
+                    return val
+        return []
+
+    async def get(self, pid: int | str) -> dict[str, Any]:
+        response = await self._sandbox._transport.request(
+            "GET", f"/sandboxes/{self._sandbox.id}/processes/{pid}"
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    async def stop(self, pid: int | str) -> None:
+        await self._sandbox._transport.request(
+            "DELETE", f"/sandboxes/{self._sandbox.id}/processes/{pid}"
+        )
+
+    async def logs(self, pid: int | str, *, tail: int = 200) -> str:
+        response = await self._sandbox._transport.request(
+            "GET",
+            f"/sandboxes/{self._sandbox.id}/processes/{pid}/logs",
+            params={"tail": tail},
+        )
+        if isinstance(response, dict):
+            return str(response.get("data") or response.get("logs") or "")
+        return str(response or "")
+
+    async def stream(self, pid: int | str) -> AsyncIterator[dict[str, Any]]:
+        import json as _json
+
+        async for raw_event in self._sandbox._transport.stream_sse(
+            f"/sandboxes/{self._sandbox.id}/processes/{pid}/stream"
+        ):
+            data_str = raw_event.get("data", "")
+            try:
+                payload: dict[str, Any] = _json.loads(data_str) if isinstance(data_str, str) else data_str
+            except (_json.JSONDecodeError, TypeError):
+                payload = {"line": data_str}
+            if isinstance(payload, dict):
+                yield payload
+
+
+class AsyncSandboxShare:
+    """Async public share-URL management for a bound sandbox."""
+
+    def __init__(self, sandbox: "AsyncSandbox") -> None:
+        self._sandbox = sandbox
+
+    async def create(
+        self,
+        *,
+        expires_in: int | None = None,
+        scope: str = "read",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"scope": scope}
+        if expires_in is not None:
+            body["expires_in"] = expires_in
+        response = await self._sandbox._transport.request(
+            "POST", f"/sandboxes/{self._sandbox.id}/shares", json_body=body
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    async def list(self) -> list[dict[str, Any]]:
+        response = await self._sandbox._transport.request(
+            "GET", f"/sandboxes/{self._sandbox.id}/shares"
+        )
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            for key in ("data", "shares", "items"):
+                val = response.get(key)
+                if isinstance(val, list):
+                    return val
+        return []
+
+    async def revoke(self, share_id: str) -> None:
+        await self._sandbox._transport.request(
+            "DELETE", f"/sandboxes/{self._sandbox.id}/shares/{share_id}"
+        )
 
 
 class AsyncSandboxPreview:
@@ -1140,7 +1532,7 @@ class AsyncSandboxEvents:
 
 
 class AsyncSandboxEnv:
-    """Async per-sandbox env reader."""
+    """Async per-sandbox env-vars — full CRUD."""
 
     def __init__(self, sandbox: AsyncSandbox) -> None:
         self._sandbox = sandbox
@@ -1152,6 +1544,23 @@ class AsyncSandboxEnv:
         if isinstance(response, dict) and "data" in response and len(response) <= 2:
             return response["data"]
         return response
+
+    get = list  # contracts alias
+
+    async def set(self, vars: list[dict[str, Any]]) -> dict[str, Any]:
+        """PUT /api/v1/sandboxes/{id}/env — bulk-set env vars."""
+        response = await self._sandbox._transport.request(
+            "PUT", f"/sandboxes/{self._sandbox.id}/env", json_body={"vars": vars}
+        )
+        if isinstance(response, dict) and "data" in response and len(response) <= 2:
+            return response["data"]
+        return response or {}
+
+    async def delete(self, key: str) -> None:
+        """DELETE /api/v1/sandboxes/{id}/env/{key}."""
+        await self._sandbox._transport.request(
+            "DELETE", f"/sandboxes/{self._sandbox.id}/env/{key}"
+        )
 
 
 class AsyncSandboxTerminal:
@@ -1261,6 +1670,8 @@ __all__ = [
     "SandboxGit",
     "SandboxLogs",
     "SandboxPreview",
+    "SandboxProcesses",
+    "SandboxShare",
     "SandboxSnapshots",
     "SandboxTags",
     "SandboxTerminal",
@@ -1274,6 +1685,8 @@ __all__ = [
     "AsyncSandboxGit",
     "AsyncSandboxLogs",
     "AsyncSandboxPreview",
+    "AsyncSandboxProcesses",
+    "AsyncSandboxShare",
     "AsyncSandboxSnapshots",
     "AsyncSandboxTags",
     "AsyncSandboxTerminal",

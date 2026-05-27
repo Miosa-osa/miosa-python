@@ -45,6 +45,19 @@ class ApiKeys:
             body["scopes"] = scopes
         return _unwrap(self._t.request("POST", "/api-keys", json_body=body))
 
+    def create_scoped(
+        self,
+        *,
+        external_user_id: str,
+        scopes: List[str],
+        expires_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """POST /api/v1/api-keys/scoped — L2 delegation token bound to one external user."""
+        body: Dict[str, Any] = {"external_user_id": external_user_id, "scopes": scopes}
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        return _unwrap(self._t.request("POST", "/api-keys/scoped", json_body=body))
+
     def delete(self, key_id: str) -> None:
         self._t.request("DELETE", f"/api-keys/{key_id}")
 
@@ -72,6 +85,18 @@ class AsyncApiKeys:
         if scopes is not None:
             body["scopes"] = scopes
         return _unwrap(await self._t.request("POST", "/api-keys", json_body=body))
+
+    async def create_scoped(
+        self,
+        *,
+        external_user_id: str,
+        scopes: List[str],
+        expires_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"external_user_id": external_user_id, "scopes": scopes}
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        return _unwrap(await self._t.request("POST", "/api-keys/scoped", json_body=body))
 
     async def delete(self, key_id: str) -> None:
         await self._t.request("DELETE", f"/api-keys/{key_id}")

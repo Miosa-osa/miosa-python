@@ -249,6 +249,47 @@ Exception hierarchy: `MiosaError` > `AuthenticationError` (401), `InsufficientCr
 - [GitHub](https://github.com/Miosa-osa/miosa-python)
 - [Contact](mailto:platform@miosa.ai)
 
+## Phase 1-4 methods (v1.1.0)
+
+**Preview tokens and share URLs**
+
+```python
+# Mint a scoped preview token (e.g. for iframe embed)
+token = sb.preview_token(expires_in=3600, scope="read")
+print(token["url"])  # https://...?mt=mp_<token>
+
+# Create a public share link (no API key required)
+share = sb.share.create(expires_in=7200)
+print(share["share_url"])
+```
+
+**File tree and batch write**
+
+```python
+tree = sb.files.tree("/workspace", depth=2)
+sb.files.write_many([
+    {"path": "/workspace/app.py", "content": "print('hello')"},
+    {"path": "/workspace/cfg.json", "content": b"{}"},
+])
+```
+
+**Tenant events stream and quotas**
+
+```python
+for event in client.events.stream(types=["sandbox.*"]):
+    print(event["_event_type"], event)
+
+client.quotas.set("usr_abc", max_sandboxes=10, max_concurrent=3)
+```
+
+**Webhook signature verification**
+
+```python
+from miosa.resources.webhooks import Webhooks
+
+ok = Webhooks.verify_signature(request.body, request.headers["X-Miosa-Signature"], secret)
+```
+
 ## License
 
 MIT

@@ -301,6 +301,12 @@ class Admin:
             "POST", "/admin/optimal/models/switch", json_body={"model_id": model_id}
         )
 
+    def impersonate(self, external_user_id: str, *, ttl_sec: int = 3600) -> Dict[str, Any]:
+        """POST /api/v1/admin/impersonate — returns {token, expires_at}."""
+        return self._transport.request(
+            "POST", "/admin/impersonate", json_body={"external_user_id": external_user_id, "ttl_sec": ttl_sec}
+        )
+
 
 class AsyncAdmin:
     """Asynchronous admin surface — mirrors :class:`Admin`."""
@@ -562,4 +568,10 @@ class AsyncAdmin:
     async def switch_optimal_model(self, model_id: str) -> Dict[str, Any]:
         return await self._transport.request(
             "POST", "/admin/optimal/models/switch", json_body={"model_id": model_id}
+        )
+
+    async def impersonate(self, external_user_id: str, *, ttl_sec: int = 3600) -> Dict[str, Any]:
+        """POST /api/v1/admin/impersonate — returns {token, expires_at}."""
+        return await self._transport.request(
+            "POST", "/admin/impersonate", json_body={"external_user_id": external_user_id, "ttl_sec": ttl_sec}
         )

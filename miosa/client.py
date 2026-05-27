@@ -47,7 +47,25 @@ from .resources.tenant import AsyncTenant, Tenant
 from .resources.usage import AsyncUsage, Usage
 from .resources.volumes import AsyncVolumes, Volumes
 from .resources.webhooks import AsyncWebhooks, Webhooks
+from .resources.org_invites import AsyncOrgInvites, OrgInvites
+from .resources.quotas import AsyncQuotas, Quotas
+from .resources.tenant_events import AsyncTenantEvents, TenantEvents
+from .resources.workspace_invites import AsyncWorkspaceInvites, WorkspaceInvites
+from .resources.workspace_members import AsyncWorkspaceMembers, WorkspaceMembers
+from .resources.tokens import AsyncTokens, Tokens
 from .resources.workspaces import AsyncWorkspaces, Workspaces
+from .resources.governance import (
+    AsyncBulk,
+    AsyncExternalUsers,
+    AsyncGovernanceTenant,
+    AsyncGovernanceWorkspaces,
+    AsyncBilling,
+    Bulk,
+    ExternalUsers,
+    GovernanceTenant,
+    GovernanceWorkspaces,
+    Billing,
+)
 from .types import CreditBalance, CreditTransactionList, CreditUsage
 
 
@@ -91,6 +109,9 @@ class Miosa:
         self.sandboxes = Sandboxes(self._transport)
         self.deployments = Deployments(self._transport)
         self.workspaces = Workspaces(self._transport)
+        self.workspace_members = WorkspaceMembers(self._transport)
+        self.workspace_invites = WorkspaceInvites(self._transport)
+        self.org_invites = OrgInvites(self._transport)
         self.admin = Admin(self._transport)
         self.open_computers = OpenComputers(self._transport)
         # P1 data + platform primitives
@@ -104,6 +125,7 @@ class Miosa:
         self.webhooks = Webhooks(self._transport)
         self.sandbox_templates = SandboxTemplates(self._transport)
         self.api_keys = ApiKeys(self._transport)
+        self.tokens = Tokens(self._transport)
         # P2 tenant + platform admin
         self.tenant = Tenant(self._transport)
         self.regions = Regions(self._transport)
@@ -112,6 +134,11 @@ class Miosa:
         self.analytics = Analytics(self._transport)
         self.audit_log = AuditLog(self._transport)
         self.usage = Usage(self._transport)
+        self.quotas = Quotas(self._transport)
+        # Tenant-level real-time event stream (SSE)
+        self.events = TenantEvents(self._transport)
+        # Alias: client.templates → same as client.sandbox_templates
+        self.templates = self.sandbox_templates
         self.channels = Channels(self._transport)
         self.integrations = Integrations(self._transport)
         self.project_integrations = ProjectIntegrations(self._transport)
@@ -134,6 +161,12 @@ class Miosa:
         self.secrets = EgressSecrets(self._transport)
         self.network = EgressNetwork(self._transport)
         self.audit = EgressAudit(self._transport)
+        # P6 governance — override tenant and workspaces with governance-aware versions
+        self.tenant = GovernanceTenant(self._transport)
+        self.workspaces = GovernanceWorkspaces(self._transport)
+        self.external_users = ExternalUsers(self._transport)
+        self.bulk = Bulk(self._transport)
+        self.billing = Billing(self._transport)
 
     # -- credits / billing --
 
@@ -208,6 +241,9 @@ class AsyncMiosa:
         self.sandboxes = AsyncSandboxes(self._transport)
         self.deployments = AsyncDeployments(self._transport)
         self.workspaces = AsyncWorkspaces(self._transport)
+        self.workspace_members = AsyncWorkspaceMembers(self._transport)
+        self.workspace_invites = AsyncWorkspaceInvites(self._transport)
+        self.org_invites = AsyncOrgInvites(self._transport)
         self.admin = AsyncAdmin(self._transport)
         self.open_computers = AsyncOpenComputers(self._transport)
         # P1 data + platform primitives
@@ -221,6 +257,7 @@ class AsyncMiosa:
         self.webhooks = AsyncWebhooks(self._transport)
         self.sandbox_templates = AsyncSandboxTemplates(self._transport)
         self.api_keys = AsyncApiKeys(self._transport)
+        self.tokens = AsyncTokens(self._transport)
         # P2 tenant + platform admin
         self.tenant = AsyncTenant(self._transport)
         self.regions = AsyncRegions(self._transport)
@@ -229,6 +266,9 @@ class AsyncMiosa:
         self.analytics = AsyncAnalytics(self._transport)
         self.audit_log = AsyncAuditLog(self._transport)
         self.usage = AsyncUsage(self._transport)
+        self.quotas = AsyncQuotas(self._transport)
+        self.events = AsyncTenantEvents(self._transport)
+        self.templates = self.sandbox_templates
         self.channels = AsyncChannels(self._transport)
         self.integrations = AsyncIntegrations(self._transport)
         self.project_integrations = AsyncProjectIntegrations(self._transport)
@@ -251,6 +291,12 @@ class AsyncMiosa:
         self.secrets = AsyncEgressSecrets(self._transport)
         self.network = AsyncEgressNetwork(self._transport)
         self.audit = AsyncEgressAudit(self._transport)
+        # P6 governance
+        self.tenant = AsyncGovernanceTenant(self._transport)
+        self.workspaces = AsyncGovernanceWorkspaces(self._transport)
+        self.external_users = AsyncExternalUsers(self._transport)
+        self.bulk = AsyncBulk(self._transport)
+        self.billing = AsyncBilling(self._transport)
 
     async def get_balance(self) -> CreditBalance:
         data = await self._transport.request("GET", "/credits/balance")
@@ -275,3 +321,8 @@ class AsyncMiosa:
 
     def __repr__(self) -> str:
         return f"AsyncMiosa(base_url={self._transport._base_url!r})"
+
+
+# Short-name aliases used in verification and docs
+Client = Miosa
+AsyncClient = AsyncMiosa

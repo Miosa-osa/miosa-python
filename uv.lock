@@ -334,7 +334,7 @@ wheels = [
 
 [[package]]
 name = "miosa"
-version = "0.3.0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

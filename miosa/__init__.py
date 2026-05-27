@@ -10,7 +10,7 @@ Usage::
     screenshot = computer.screenshot()
 """
 
-from .client import AsyncMiosa, Miosa
+from .client import AsyncClient, AsyncMiosa, Client, Miosa
 from .errors import (
     AuthenticationError,
     ConnectionError,
@@ -79,6 +79,8 @@ __all__ = [
     # Clients
     "Miosa",
     "AsyncMiosa",
+    "Client",
+    "AsyncClient",
     # Errors
     "MiosaError",
     "AuthenticationError",
@@ -142,4 +144,4 @@ __all__ = [
     "WorkspaceData",
 ]
 
-__version__ = "0.3.0"
+__version__ = "1.1.0"

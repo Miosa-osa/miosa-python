@@ -34,6 +34,8 @@ from .sandbox_namespaces import (
     AsyncSandboxGit,
     AsyncSandboxLogs,
     AsyncSandboxPreview,
+    AsyncSandboxProcesses,
+    AsyncSandboxShare,
     AsyncSandboxSnapshots,
     AsyncSandboxTags,
     AsyncSandboxTerminal,
@@ -46,6 +48,8 @@ from .sandbox_namespaces import (
     SandboxGit,
     SandboxLogs,
     SandboxPreview,
+    SandboxProcesses,
+    SandboxShare,
     SandboxSnapshots,
     SandboxTags,
     SandboxTerminal,
@@ -82,6 +86,7 @@ class CreateSandboxOptions(TypedDict, total=False):
     entrypoint: str
     tags: list[str]
     idempotency_key: str
+    slug: str
     # White-label attribution. See miosa.types.ExternalAttribution.
     external_workspace_id: str
     external_user_id: str
@@ -174,6 +179,14 @@ def _normalize_sandbox_payload(data: Any) -> dict[str, Any]:
     raise TypeError("Expected sandbox response object")
 
 
+def _unwrap_preview_token(data: Any) -> dict[str, Any]:
+    if isinstance(data, dict):
+        for k in ("data", "preview_token"):
+            if k in data and isinstance(data[k], dict):
+                return cast(dict[str, Any], data[k])
+    return cast(dict[str, Any], data) if isinstance(data, dict) else {}
+
+
 def _normalize_list_payload(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, list):
         return cast(list[dict[str, Any]], data)
@@ -208,6 +221,7 @@ def _build_create_body(options: CreateSandboxOptions) -> dict[str, Any]:
         "always_on",
         "entrypoint",
         "tags",
+        "slug",
         # White-label attribution. Backend stores these as text on the
         # sandbox row (Engine.ExternalAttribution).
         "external_workspace_id",
@@ -246,6 +260,7 @@ def _merge_create_options(
     external_workspace_id: str | None = None,
     external_user_id: str | None = None,
     external_project_id: str | None = None,
+    slug: str | None = None,
 ) -> CreateSandboxOptions:
     if opts is not None:
         if template_id is not None or image is not None:
@@ -258,6 +273,7 @@ def _merge_create_options(
             ("external_workspace_id", external_workspace_id),
             ("external_user_id", external_user_id),
             ("external_project_id", external_project_id),
+            ("slug", slug),
         ):
             if value is not None:
                 merged_opts[key] = value  # type: ignore[literal-required]
@@ -292,6 +308,7 @@ def _merge_create_options(
         "external_workspace_id": external_workspace_id,
         "external_user_id": external_user_id,
         "external_project_id": external_project_id,
+        "slug": slug,
     }
     for key, value in values.items():
         if value is not None:
@@ -346,6 +363,8 @@ class Sandbox:
         self.env = SandboxEnv(self)
         self.terminal = SandboxTerminal(self)
         self.tags = SandboxTags(self)
+        self.processes = SandboxProcesses(self)
+        self.share = SandboxShare(self)
         # Egress (security) namespaces — pre-scoped to this sandbox id
         sandbox_id = str(data["id"])
         self.secrets = SandboxSecrets(transport, sandbox_id)
@@ -636,6 +655,41 @@ class Sandbox:
     def delete_snapshot(self, snapshot_id: str) -> None:
         self._transport.request("DELETE", f"/sandboxes/{self.id}/snapshots/{snapshot_id}")
 
+    def update(
+        self,
+        *,
+        name: str | None = None,
+        slug: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        always_on: bool | None = None,
+        timeout_sec: int | None = None,
+        idle_timeout_sec: int | None = None,
+    ) -> "Sandbox":
+        """PATCH /api/v1/sandboxes/{id} — update mutable sandbox fields."""
+        body: dict[str, Any] = {}
+        for key, value in (
+            ("name", name),
+            ("slug", slug),
+            ("tags", tags),
+            ("metadata", metadata),
+            ("always_on", always_on),
+            ("timeout_sec", timeout_sec),
+            ("idle_timeout_sec", idle_timeout_sec),
+        ):
+            if value is not None:
+                body[key] = value
+        response = self._transport.request("PATCH", f"/sandboxes/{self.id}", json_body=body)
+        self._replace(_normalize_sandbox_payload(response))
+        return self
+
+    def preview_token(self, expires_in: int = 3600, scope: str = "read") -> dict[str, Any]:
+        """POST /api/v1/sandboxes/{id}/preview-token → {token, url, expires_at, scope}"""
+        body = {"expires_in": expires_in, "scope": scope}
+        return _unwrap_preview_token(
+            self._transport.request("POST", f"/sandboxes/{self.id}/preview-token", json_body=body)
+        )
+
     def pause(self) -> Sandbox:
         response = self._transport.request("POST", f"/sandboxes/{self.id}/pause", json_body={})
         self._replace(_normalize_sandbox_payload(response))
@@ -683,16 +737,20 @@ class Sandbox:
     def fork(
         self,
         *,
+        snapshot_id: str | None = None,
         name: str | None = None,
+        external_user_id: str | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> Sandbox:
+    ) -> "Sandbox":
         """Fork (clone) this sandbox into a new sandbox.
 
         The fork is a copy-on-write snapshot of the current sandbox filesystem
         and process state. The original sandbox continues running unchanged.
 
         Args:
+            snapshot_id: Optional snapshot to fork from instead of live state.
             name: Optional name for the forked sandbox.
+            external_user_id: Optional white-label user attribution.
             metadata: Optional metadata dict for the forked sandbox.
 
         Returns:
@@ -706,8 +764,12 @@ class Sandbox:
         """
         self._assert_running("fork")
         body: dict[str, Any] = {}
+        if snapshot_id is not None:
+            body["snapshot_id"] = snapshot_id
         if name is not None:
             body["name"] = name
+        if external_user_id is not None:
+            body["external_user_id"] = external_user_id
         if metadata is not None:
             body["metadata"] = metadata
         response = self._transport.request(
@@ -773,6 +835,7 @@ class Sandboxes:
         external_workspace_id: str | None = None,
         external_user_id: str | None = None,
         external_project_id: str | None = None,
+        slug: str | None = None,
         opts: CreateSandboxOptions | None = None,
     ) -> Sandbox:
         merged = _merge_create_options(
@@ -802,6 +865,7 @@ class Sandboxes:
             external_workspace_id=external_workspace_id,
             external_user_id=external_user_id,
             external_project_id=external_project_id,
+            slug=slug,
         )
         headers = (
             {"Idempotency-Key": merged["idempotency_key"]}
@@ -947,6 +1011,8 @@ class AsyncSandbox:
         self.env = AsyncSandboxEnv(self)
         self.terminal = AsyncSandboxTerminal(self)
         self.tags = AsyncSandboxTags(self)
+        self.processes = AsyncSandboxProcesses(self)
+        self.share = AsyncSandboxShare(self)
         # Egress (security) namespaces — pre-scoped to this sandbox id
         sandbox_id = str(data["id"])
         self.secrets = AsyncSandboxSecrets(transport, sandbox_id)
@@ -1232,6 +1298,43 @@ class AsyncSandbox:
     async def delete_snapshot(self, snapshot_id: str) -> None:
         await self._transport.request("DELETE", f"/sandboxes/{self.id}/snapshots/{snapshot_id}")
 
+    async def update(
+        self,
+        *,
+        name: str | None = None,
+        slug: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        always_on: bool | None = None,
+        timeout_sec: int | None = None,
+        idle_timeout_sec: int | None = None,
+    ) -> "AsyncSandbox":
+        """PATCH /api/v1/sandboxes/{id} — update mutable sandbox fields."""
+        body: dict[str, Any] = {}
+        for key, value in (
+            ("name", name),
+            ("slug", slug),
+            ("tags", tags),
+            ("metadata", metadata),
+            ("always_on", always_on),
+            ("timeout_sec", timeout_sec),
+            ("idle_timeout_sec", idle_timeout_sec),
+        ):
+            if value is not None:
+                body[key] = value
+        response = await self._transport.request("PATCH", f"/sandboxes/{self.id}", json_body=body)
+        self._replace(_normalize_sandbox_payload(response))
+        return self
+
+    async def preview_token(self, expires_in: int = 3600, scope: str = "read") -> dict[str, Any]:
+        """POST /api/v1/sandboxes/{id}/preview-token → {token, url, expires_at, scope}"""
+        body = {"expires_in": expires_in, "scope": scope}
+        return _unwrap_preview_token(
+            await self._transport.request(
+                "POST", f"/sandboxes/{self.id}/preview-token", json_body=body
+            )
+        )
+
     async def pause(self) -> AsyncSandbox:
         response = await self._transport.request(
             "POST", f"/sandboxes/{self.id}/pause", json_body={}
@@ -1283,20 +1386,18 @@ class AsyncSandbox:
     async def fork(
         self,
         *,
+        snapshot_id: str | None = None,
         name: str | None = None,
+        external_user_id: str | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> AsyncSandbox:
+    ) -> "AsyncSandbox":
         """Fork (clone) this sandbox into a new sandbox.
 
-        The fork is a copy-on-write snapshot of the current sandbox filesystem
-        and process state. The original sandbox continues running unchanged.
-
         Args:
+            snapshot_id: Optional snapshot to fork from instead of live state.
             name: Optional name for the forked sandbox.
+            external_user_id: Optional white-label user attribution.
             metadata: Optional metadata dict for the forked sandbox.
-
-        Returns:
-            A new :class:`AsyncSandbox` handle for the forked instance.
 
         Example::
 
@@ -1306,8 +1407,12 @@ class AsyncSandbox:
         """
         self._assert_running("fork")
         body: dict[str, Any] = {}
+        if snapshot_id is not None:
+            body["snapshot_id"] = snapshot_id
         if name is not None:
             body["name"] = name
+        if external_user_id is not None:
+            body["external_user_id"] = external_user_id
         if metadata is not None:
             body["metadata"] = metadata
         response = await self._transport.request(
@@ -1373,6 +1478,7 @@ class AsyncSandboxes:
         external_workspace_id: str | None = None,
         external_user_id: str | None = None,
         external_project_id: str | None = None,
+        slug: str | None = None,
         opts: CreateSandboxOptions | None = None,
     ) -> AsyncSandbox:
         merged = _merge_create_options(
@@ -1402,6 +1508,7 @@ class AsyncSandboxes:
             external_workspace_id=external_workspace_id,
             external_user_id=external_user_id,
             external_project_id=external_project_id,
+            slug=slug,
         )
         headers = (
             {"Idempotency-Key": merged["idempotency_key"]}
