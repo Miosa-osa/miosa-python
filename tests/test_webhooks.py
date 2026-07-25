@@ -40,9 +40,7 @@ class TestWebhooks:
         assert result["id"] == "wh_001"
 
     def test_update(self, mock_api, client):
-        route = mock_api.patch("/webhooks/wh_001").respond(
-            200, json={"data": {**WEBHOOK, "active": False}}
-        )
+        mock_api.patch("/webhooks/wh_001").respond(200, json={"data": {**WEBHOOK, "active": False}})
         result = client.webhooks.update("wh_001", active=False)
         assert result["active"] is False
 
@@ -55,7 +53,7 @@ class TestWebhooks:
         route = mock_api.post("/webhooks/wh_001/test").respond(
             200, json={"data": {"delivered": True}}
         )
-        result = client.webhooks.test("wh_001")
+        client.webhooks.test("wh_001")
         assert route.called
 
     def test_deliveries(self, mock_api, client):
@@ -109,8 +107,17 @@ class TestWebhookSignature:
         result = client_verify_signature(b"body", "not-a-valid-header", "secret")
         assert result is False
 
+    def test_verify_current_server_signature(self):
+        secret = "whsec_test"
+        body = b'{"event":"run.succeeded","run_id":"run_1"}'
+        digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+        assert client_verify_signature(body, f"sha256={digest}", secret) is True
+        assert client_verify_signature(body + b" ", f"sha256={digest}", secret) is False
+
 
 def client_verify_signature(body: bytes, header: str, secret: str) -> bool:
     """Helper that calls the static method on Webhooks."""
     from miosa.resources.webhooks import Webhooks
+
     return Webhooks.verify_signature(body, header, secret)

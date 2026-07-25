@@ -289,6 +289,51 @@ class TestPtyTerminal:
         assert isinstance(result, dict)
 
 
+# ─── Gap 6b: Sandbox metrics ─────────────────────────────────────────────────
+
+
+class TestSandboxMetrics:
+    """Sandbox metrics expose GET /sandboxes/:id/metrics."""
+
+    def test_metrics_gets_sandbox_metrics_endpoint(self, client, mock_api):
+        captured: dict = {}
+
+        def capture_request(request: httpx.Request) -> httpx.Response:
+            captured["params"] = dict(request.url.params)
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "resource_type": "sandbox",
+                        "current": {"cpu_count": 2, "memory_mb": 4096},
+                    }
+                },
+            )
+
+        mock_api.get(f"/sandboxes/{SANDBOX_JSON['id']}/metrics").mock(
+            side_effect=capture_request
+        )
+        sb = _make_sandbox(client)
+        result = sb.get_metrics("24h")
+
+        assert captured["params"]["window"] == "24h"
+        assert result["current"]["cpu_count"] == 2
+
+
+class TestSandboxUrlHelpers:
+    """Sandbox URL helpers use the canonical preview resolver."""
+
+    def test_get_host_and_get_url_parse_expose_info(self, client, mock_api):
+        mock_api.post(f"/sandboxes/{SANDBOX_JSON['id']}/expose").respond(
+            200, json={"data": {"url": "https://5173-sbx.sandbox.miosa.ai"}}
+        )
+
+        sb = _make_sandbox(client)
+
+        assert sb.get_host(5173) == "5173-sbx.sandbox.miosa.ai"
+        assert sb.get_url(5173, "admin") == "https://5173-sbx.sandbox.miosa.ai/admin"
+
+
 # ─── Gap 7: Git sugar ─────────────────────────────────────────────────────────
 
 

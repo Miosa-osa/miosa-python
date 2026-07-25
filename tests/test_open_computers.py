@@ -196,6 +196,37 @@ def test_agents_dispatch(client: Miosa):
     assert session.id == "sess_1"
 
 
+def test_agents_dispatch_accepts_current_backend_shape(client: Miosa):
+    from miosa.resources.open_computers.types import AgentDispatchParams
+
+    with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
+        router.post("/opencomputers/hosts/host_abc/agent/dispatch").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "session_id": "sess_2",
+                    "host_id": "host_abc",
+                    "task": "run tests",
+                    "status": "running",
+                    "agent_runtime_profile_id": "prof_123",
+                    "runtime_context": {
+                        "agent_runtime_profile": {
+                            "id": "prof_123",
+                            "runtime": "claude-code",
+                        }
+                    },
+                },
+            )
+        )
+        session = client.open_computers.agents.dispatch(
+            "host_abc",
+            AgentDispatchParams(task="run tests", agent_runtime_profile_id="prof_123"),
+        )
+
+    assert session.id == "sess_2"
+    assert session.agent_runtime_profile_id == "prof_123"
+
+
 def test_agents_cancel(client: Miosa):
     with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
         router.delete("/opencomputers/hosts/host_abc/agent/sessions/sess_1").mock(

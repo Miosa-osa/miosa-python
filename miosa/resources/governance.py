@@ -6,6 +6,10 @@ import json as _json
 from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from ..types import Computer as ComputerModel
+from ..types import WorkspaceData
+from .tenant import AsyncBranding, AsyncPreviewDomain, Branding, PreviewDomain
+
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
 
@@ -568,6 +572,8 @@ class GovernanceTenant:
 
     def __init__(self, t: "SyncTransport") -> None:
         self._t = t
+        self.preview_domain = PreviewDomain(t)
+        self.branding = Branding(t)
         self.policy = TenantPolicy(t)
         self.members = TenantMembers(t)
         self.events = TenantEventStream(t)
@@ -579,6 +585,8 @@ class GovernanceTenant:
 class AsyncGovernanceTenant:
     def __init__(self, t: "AsyncTransport") -> None:
         self._t = t
+        self.preview_domain = AsyncPreviewDomain(t)
+        self.branding = AsyncBranding(t)
         self.policy = AsyncTenantPolicy(t)
         self.members = AsyncTenantMembers(t)
         self.events = AsyncTenantEventStream(t)
@@ -606,29 +614,49 @@ class GovernanceWorkspaces:
     def __call__(self, workspace_id: str) -> "_WorkspaceProxy":
         return _WorkspaceProxy(self._t, workspace_id)
 
-    def list(self) -> List[Dict[str, Any]]:
+    def list(self) -> List[WorkspaceData]:
         data = self._t.request("GET", "/workspaces")
         items = _unwrap(data, "data")
         if isinstance(items, dict) and "workspaces" in items:
             items = items["workspaces"]
-        return items if isinstance(items, list) else []
+        return [WorkspaceData.model_validate(item) for item in (items or [])]
 
-    def create(self, name: str, *, description: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def create(self, name: str, *, description: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> WorkspaceData:
         body: Dict[str, Any] = {"name": name}
         if description is not None:
             body["description"] = description
         if metadata is not None:
             body["metadata"] = metadata
-        return _unwrap(self._t.request("POST", "/workspaces", json_body=body), "data")
+        return WorkspaceData.model_validate(
+            _unwrap(self._t.request("POST", "/workspaces", json_body=body), "data")
+        )
 
-    def get(self, workspace_id: str) -> Dict[str, Any]:
-        return _unwrap(self._t.request("GET", f"/workspaces/{workspace_id}"), "data")
+    def get(self, workspace_id: str) -> WorkspaceData:
+        return WorkspaceData.model_validate(
+            _unwrap(self._t.request("GET", f"/workspaces/{workspace_id}"), "data")
+        )
 
-    def update(self, workspace_id: str, **fields: Any) -> Dict[str, Any]:
-        return _unwrap(self._t.request("PATCH", f"/workspaces/{workspace_id}", json_body=fields), "data")
+    def update(self, workspace_id: str, **fields: Any) -> WorkspaceData:
+        return WorkspaceData.model_validate(
+            _unwrap(
+                self._t.request("PATCH", f"/workspaces/{workspace_id}", json_body=fields),
+                "data",
+            )
+        )
 
     def delete(self, workspace_id: str) -> None:
         self._t.request("DELETE", f"/workspaces/{workspace_id}")
+
+    def list_computers(self, workspace_id: str) -> List[Any]:
+        from .computer import Computer
+
+        data = self._t.request("GET", f"/workspaces/{workspace_id}/computers")
+        items: list[Any] = []
+        if isinstance(data, dict):
+            items = data.get("computers") or data.get("data") or []
+        elif isinstance(data, list):
+            items = data
+        return [Computer(self._t, ComputerModel.model_validate(item)) for item in items]
 
 
 class AsyncGovernanceWorkspaces:
@@ -638,26 +666,35 @@ class AsyncGovernanceWorkspaces:
     def __call__(self, workspace_id: str) -> "_AsyncWorkspaceProxy":
         return _AsyncWorkspaceProxy(self._t, workspace_id)
 
-    async def list(self) -> List[Dict[str, Any]]:
+    async def list(self) -> List[WorkspaceData]:
         data = await self._t.request("GET", "/workspaces")
         items = _unwrap(data, "data")
         if isinstance(items, dict) and "workspaces" in items:
             items = items["workspaces"]
-        return items if isinstance(items, list) else []
+        return [WorkspaceData.model_validate(item) for item in (items or [])]
 
-    async def create(self, name: str, *, description: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def create(self, name: str, *, description: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> WorkspaceData:
         body: Dict[str, Any] = {"name": name}
         if description is not None:
             body["description"] = description
         if metadata is not None:
             body["metadata"] = metadata
-        return _unwrap(await self._t.request("POST", "/workspaces", json_body=body), "data")
+        return WorkspaceData.model_validate(
+            _unwrap(await self._t.request("POST", "/workspaces", json_body=body), "data")
+        )
 
-    async def get(self, workspace_id: str) -> Dict[str, Any]:
-        return _unwrap(await self._t.request("GET", f"/workspaces/{workspace_id}"), "data")
+    async def get(self, workspace_id: str) -> WorkspaceData:
+        return WorkspaceData.model_validate(
+            _unwrap(await self._t.request("GET", f"/workspaces/{workspace_id}"), "data")
+        )
 
-    async def update(self, workspace_id: str, **fields: Any) -> Dict[str, Any]:
-        return _unwrap(await self._t.request("PATCH", f"/workspaces/{workspace_id}", json_body=fields), "data")
+    async def update(self, workspace_id: str, **fields: Any) -> WorkspaceData:
+        return WorkspaceData.model_validate(
+            _unwrap(
+                await self._t.request("PATCH", f"/workspaces/{workspace_id}", json_body=fields),
+                "data",
+            )
+        )
 
     async def delete(self, workspace_id: str) -> None:
         await self._t.request("DELETE", f"/workspaces/{workspace_id}")

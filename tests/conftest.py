@@ -43,7 +43,7 @@ SANDBOX_JSON = {
     "started_at": "2026-05-13T00:00:01Z",
     "ready_at": "2026-05-13T00:00:01Z",
     "destroyed_at": None,
-    "preview_url": "https://3000-sbxabc.sandbox.miosa.app",
+    "preview_url": "https://3000-sbxabc.sandbox.miosa.ai",
     "boot_path": "snapshot",
     "boot_ms": 166,
 }

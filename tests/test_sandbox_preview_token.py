@@ -14,7 +14,7 @@ class TestSandboxPreviewToken:
             200,
             json={
                 "token": "mp_abc123",
-                "url": "https://3000-sbxabc.sandbox.miosa.app?mt=mp_abc123",
+                "url": "https://3000-sbxabc.sandbox.miosa.ai?mt=mp_abc123",
                 "expires_at": "2026-05-26T01:00:00Z",
                 "scope": "read",
             },
@@ -33,7 +33,7 @@ class TestSandboxPreviewToken:
             200,
             json={
                 "token": "mp_xyz",
-                "url": "https://3000-sbxabc.sandbox.miosa.app?mt=mp_xyz",
+                "url": "https://3000-sbxabc.sandbox.miosa.ai?mt=mp_xyz",
                 "expires_at": "2026-05-26T00:30:00Z",
                 "scope": "interact",
             },

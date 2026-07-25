@@ -5,22 +5,35 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-from ._http import DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT, AsyncTransport, SyncTransport
+from ._http import (
+    DEFAULT_BASE_URL,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT,
+    AsyncTransport,
+    SyncTransport,
+)
 from .resources.admin import Admin, AsyncAdmin
+from .resources.agent_run_groups import AgentRunGroups, AsyncAgentRunGroups
+from .resources.agent_runs import AgentRuns, AsyncAgentRuns
+from .resources.agent_runtime_profiles import AgentRuntimeProfiles, AsyncAgentRuntimeProfiles
 from .resources.analytics import Analytics, AsyncAnalytics
 from .resources.api_keys import ApiKeys, AsyncApiKeys
 from .resources.audit_log import AsyncAuditLog, AuditLog
 from .resources.benchmarks import AsyncBenchmarks, Benchmarks
 from .resources.builder_sessions import AsyncBuilderSessions, BuilderSessions
 from .resources.channels import AsyncChannels, Channels
+from .resources.cloud import AsyncCloud, Cloud
 from .resources.command_center import AsyncCommandCenter, CommandCenter
 from .resources.community import AsyncCommunity, Community
 from .resources.completions import AsyncCompletions, Completions
 from .resources.computers import AsyncComputersResource, ComputersResource
+from .resources.connectors import AsyncConnectors, Connectors
 from .resources.cron_jobs import AsyncCronJobs, CronJobs
 from .resources.dashboard import AsyncDashboard, Dashboard
 from .resources.databases import AsyncDatabases, Databases
 from .resources.deployments import AsyncDeployments, Deployments
+from .resources.devices import AsyncDevices, Devices
+from .resources.docker_deploy import AsyncDockerDeploy, DockerDeploy
 from .resources.egress_audit import AsyncEgressAudit, EgressAudit
 from .resources.egress_network import AsyncEgressNetwork, EgressNetwork
 from .resources.egress_secrets import AsyncEgressSecrets, EgressSecrets
@@ -29,43 +42,49 @@ from .resources.embeddings import AsyncEmbeddings, Embeddings
 from .resources.external_keys import AsyncExternalKeys, ExternalKeys
 from .resources.flat_custom_domains import AsyncFlatCustomDomains, FlatCustomDomains
 from .resources.functions import AsyncFunctions, Functions
+from .resources.governance import (
+    AsyncBilling,
+    AsyncBulk,
+    AsyncExternalUsers,
+    AsyncGovernanceTenant,
+    AsyncGovernanceWorkspaces,
+    Billing,
+    Bulk,
+    ExternalUsers,
+    GovernanceTenant,
+    GovernanceWorkspaces,
+)
 from .resources.health_checks import AsyncHealthChecks, HealthChecks
 from .resources.integrations import AsyncIntegrations, Integrations
 from .resources.mcp import MCP, AsyncMCP
 from .resources.models import AsyncModels, Models
 from .resources.open_computers import AsyncOpenComputers, OpenComputers
+from .resources.org_invites import AsyncOrgInvites, OrgInvites
+from .resources.organizations import AsyncOrganizations, Organizations
 from .resources.project_auth import AsyncProjectAuth, ProjectAuth
 from .resources.project_integrations import AsyncProjectIntegrations, ProjectIntegrations
 from .resources.provider_defaults import AsyncProviderDefaults, ProviderDefaults
+from .resources.quotas import AsyncQuotas, Quotas
 from .resources.regions import AsyncRegions, Regions
+from .resources.run_groups import AsyncRunGroups, RunGroups
+from .resources.runs import AsyncRuns, Runs
+from .resources.runtime_capabilities import AsyncRuntimeCapabilities, RuntimeCapabilities
+from .resources.runtime_env import AsyncRuntimeEnv, RuntimeEnv
 from .resources.sandbox_templates import AsyncSandboxTemplates, SandboxTemplates
 from .resources.sandboxes import AsyncSandboxes, Sandboxes
 from .resources.settings import AsyncSettings, Settings
 from .resources.snapshots_standalone import AsyncSnapshotsStandalone, SnapshotsStandalone
 from .resources.storage import AsyncStorage, Storage
+from .resources.templates import AsyncTemplates, Templates
 from .resources.tenant import AsyncTenant, Tenant
+from .resources.tenant_events import AsyncTenantEvents, TenantEvents
+from .resources.tokens import AsyncTokens, Tokens
 from .resources.usage import AsyncUsage, Usage
 from .resources.volumes import AsyncVolumes, Volumes
 from .resources.webhooks import AsyncWebhooks, Webhooks
-from .resources.org_invites import AsyncOrgInvites, OrgInvites
-from .resources.quotas import AsyncQuotas, Quotas
-from .resources.tenant_events import AsyncTenantEvents, TenantEvents
 from .resources.workspace_invites import AsyncWorkspaceInvites, WorkspaceInvites
 from .resources.workspace_members import AsyncWorkspaceMembers, WorkspaceMembers
-from .resources.tokens import AsyncTokens, Tokens
 from .resources.workspaces import AsyncWorkspaces, Workspaces
-from .resources.governance import (
-    AsyncBulk,
-    AsyncExternalUsers,
-    AsyncGovernanceTenant,
-    AsyncGovernanceWorkspaces,
-    AsyncBilling,
-    Bulk,
-    ExternalUsers,
-    GovernanceTenant,
-    GovernanceWorkspaces,
-    Billing,
-)
 from .types import CreditBalance, CreditTransactionList, CreditUsage
 
 
@@ -85,15 +104,24 @@ class Miosa:
         self,
         api_key: Optional[str] = None,
         *,
+        access_token: Optional[str] = None,
+        tenant: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> None:
-        resolved_key = api_key or os.environ.get("MIOSA_API_KEY")
+        if api_key and access_token:
+            raise ValueError("Pass either api_key or access_token, not both.")
+        resolved_key = (
+            access_token
+            or api_key
+            or os.environ.get("MIOSA_ACCESS_TOKEN")
+            or os.environ.get("MIOSA_API_KEY")
+        )
         if not resolved_key:
             raise ValueError(
-                "No API key provided. Pass api_key= or set the MIOSA_API_KEY "
-                "environment variable."
+                "No API key or access token provided. Pass api_key= or access_token=, or set "
+                "MIOSA_API_KEY or MIOSA_ACCESS_TOKEN."
             )
 
         resolved_url = base_url or os.environ.get("MIOSA_BASE_URL", DEFAULT_BASE_URL)
@@ -103,15 +131,18 @@ class Miosa:
             base_url=resolved_url,
             timeout=timeout,
             max_retries=max_retries,
+            tenant=tenant or os.environ.get("MIOSA_TENANT"),
         )
 
         self.computers = ComputersResource(self._transport)
         self.sandboxes = Sandboxes(self._transport)
         self.deployments = Deployments(self._transport)
+        self.docker_deploy = DockerDeploy(self._transport)
         self.workspaces = Workspaces(self._transport)
         self.workspace_members = WorkspaceMembers(self._transport)
         self.workspace_invites = WorkspaceInvites(self._transport)
         self.org_invites = OrgInvites(self._transport)
+        self.organizations = Organizations(self._transport)
         self.admin = Admin(self._transport)
         self.open_computers = OpenComputers(self._transport)
         # P1 data + platform primitives
@@ -137,14 +168,28 @@ class Miosa:
         self.quotas = Quotas(self._transport)
         # Tenant-level real-time event stream (SSE)
         self.events = TenantEvents(self._transport)
-        # Alias: client.templates → same as client.sandbox_templates
-        self.templates = self.sandbox_templates
+        # Product-aware catalog across sandboxes, computers, and appliances.
+        # Tenant sandbox template CRUD remains on client.sandbox_templates.
+        self.templates = Templates(
+            self._transport,
+            sandbox_templates=self.sandbox_templates,
+        )
         self.channels = Channels(self._transport)
+        self.cloud = Cloud(self._transport)
         self.integrations = Integrations(self._transport)
         self.project_integrations = ProjectIntegrations(self._transport)
         self.project_auth = ProjectAuth(self._transport)
         self.external_keys = ExternalKeys(self._transport)
         self.mcp = MCP(self._transport)
+        self.runs = Runs(self._transport)
+        self.run_groups = RunGroups(self._transport)
+        self.agent_runs = AgentRuns(self._transport)
+        self.agent_run_groups = AgentRunGroups(self._transport)
+        self.agent_runtime_profiles = AgentRuntimeProfiles(self._transport)
+        self.connectors = Connectors(self._transport)
+        self.runtime_env = RuntimeEnv(self._transport)
+        self.runtime_capabilities = RuntimeCapabilities(self._transport)
+        self.devices = Devices(self._transport)
         # P3 LLM / model surface
         self.models = Models(self._transport)
         self.completions = Completions(self._transport)
@@ -217,15 +262,24 @@ class AsyncMiosa:
         self,
         api_key: Optional[str] = None,
         *,
+        access_token: Optional[str] = None,
+        tenant: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> None:
-        resolved_key = api_key or os.environ.get("MIOSA_API_KEY")
+        if api_key and access_token:
+            raise ValueError("Pass either api_key or access_token, not both.")
+        resolved_key = (
+            access_token
+            or api_key
+            or os.environ.get("MIOSA_ACCESS_TOKEN")
+            or os.environ.get("MIOSA_API_KEY")
+        )
         if not resolved_key:
             raise ValueError(
-                "No API key provided. Pass api_key= or set the MIOSA_API_KEY "
-                "environment variable."
+                "No API key or access token provided. Pass api_key= or access_token=, or set "
+                "MIOSA_API_KEY or MIOSA_ACCESS_TOKEN."
             )
 
         resolved_url = base_url or os.environ.get("MIOSA_BASE_URL", DEFAULT_BASE_URL)
@@ -235,15 +289,18 @@ class AsyncMiosa:
             base_url=resolved_url,
             timeout=timeout,
             max_retries=max_retries,
+            tenant=tenant or os.environ.get("MIOSA_TENANT"),
         )
 
         self.computers = AsyncComputersResource(self._transport)
         self.sandboxes = AsyncSandboxes(self._transport)
         self.deployments = AsyncDeployments(self._transport)
+        self.docker_deploy = AsyncDockerDeploy(self._transport)
         self.workspaces = AsyncWorkspaces(self._transport)
         self.workspace_members = AsyncWorkspaceMembers(self._transport)
         self.workspace_invites = AsyncWorkspaceInvites(self._transport)
         self.org_invites = AsyncOrgInvites(self._transport)
+        self.organizations = AsyncOrganizations(self._transport)
         self.admin = AsyncAdmin(self._transport)
         self.open_computers = AsyncOpenComputers(self._transport)
         # P1 data + platform primitives
@@ -268,13 +325,26 @@ class AsyncMiosa:
         self.usage = AsyncUsage(self._transport)
         self.quotas = AsyncQuotas(self._transport)
         self.events = AsyncTenantEvents(self._transport)
-        self.templates = self.sandbox_templates
+        self.templates = AsyncTemplates(
+            self._transport,
+            sandbox_templates=self.sandbox_templates,
+        )
         self.channels = AsyncChannels(self._transport)
+        self.cloud = AsyncCloud(self._transport)
         self.integrations = AsyncIntegrations(self._transport)
         self.project_integrations = AsyncProjectIntegrations(self._transport)
         self.project_auth = AsyncProjectAuth(self._transport)
         self.external_keys = AsyncExternalKeys(self._transport)
         self.mcp = AsyncMCP(self._transport)
+        self.runs = AsyncRuns(self._transport)
+        self.run_groups = AsyncRunGroups(self._transport)
+        self.agent_runs = AsyncAgentRuns(self._transport)
+        self.agent_run_groups = AsyncAgentRunGroups(self._transport)
+        self.agent_runtime_profiles = AsyncAgentRuntimeProfiles(self._transport)
+        self.connectors = AsyncConnectors(self._transport)
+        self.runtime_env = AsyncRuntimeEnv(self._transport)
+        self.runtime_capabilities = AsyncRuntimeCapabilities(self._transport)
+        self.devices = AsyncDevices(self._transport)
         # P3 LLM / model surface
         self.models = AsyncModels(self._transport)
         self.completions = AsyncCompletions(self._transport)

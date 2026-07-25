@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
@@ -25,29 +25,27 @@ class ExternalKeys:
     Stored encrypted per-user and used by dashboard features (Builder, etc.).
     """
 
-    def __init__(self, transport: "SyncTransport") -> None:
+    def __init__(self, transport: SyncTransport) -> None:
         self._t = transport
 
-    def list(self) -> List[Dict[str, Any]]:
+    def list(self) -> list[dict[str, Any]]:
         """List configured external keys."""
         data = self._t.request("GET", "/external-keys")
         result = _unwrap(data)
         return result if isinstance(result, list) else []
 
-    def create(self, provider: str, key: str, **attrs: Any) -> Dict[str, Any]:
+    def create(self, provider: str, key: str, **attrs: Any) -> dict[str, Any]:
         """Create / register an external provider key."""
         body = {
             "provider": provider,
-            "key": key,
+            "value": key,
             **{k: v for k, v in attrs.items() if v is not None},
         }
         return _unwrap(self._t.request("POST", "/external-keys", json_body=body))
 
-    def resolve(self, provider: str) -> Dict[str, Any]:
+    def resolve(self, provider: str) -> dict[str, Any]:
         """Resolve (preview) the stored key for a provider."""
-        return _unwrap(
-            self._t.request("GET", f"/external-keys/{provider}/resolve")
-        )
+        return _unwrap(self._t.request("GET", f"/external-keys/{provider}/resolve"))
 
     def delete(self, provider: str) -> None:
         """Delete the stored key for a provider.
@@ -60,30 +58,24 @@ class ExternalKeys:
 class AsyncExternalKeys:
     """Async external keys."""
 
-    def __init__(self, transport: "AsyncTransport") -> None:
+    def __init__(self, transport: AsyncTransport) -> None:
         self._t = transport
 
-    async def list(self) -> List[Dict[str, Any]]:
+    async def list(self) -> list[dict[str, Any]]:
         data = await self._t.request("GET", "/external-keys")
         result = _unwrap(data)
         return result if isinstance(result, list) else []
 
-    async def create(
-        self, provider: str, key: str, **attrs: Any
-    ) -> Dict[str, Any]:
+    async def create(self, provider: str, key: str, **attrs: Any) -> dict[str, Any]:
         body = {
             "provider": provider,
-            "key": key,
+            "value": key,
             **{k: v for k, v in attrs.items() if v is not None},
         }
-        return _unwrap(
-            await self._t.request("POST", "/external-keys", json_body=body)
-        )
+        return _unwrap(await self._t.request("POST", "/external-keys", json_body=body))
 
-    async def resolve(self, provider: str) -> Dict[str, Any]:
-        return _unwrap(
-            await self._t.request("GET", f"/external-keys/{provider}/resolve")
-        )
+    async def resolve(self, provider: str) -> dict[str, Any]:
+        return _unwrap(await self._t.request("GET", f"/external-keys/{provider}/resolve"))
 
     async def delete(self, provider: str) -> None:
         await self._t.request("DELETE", f"/external-keys/{provider}")

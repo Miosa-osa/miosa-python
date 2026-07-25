@@ -30,6 +30,7 @@ from ..types import (
     PublishResult,
     RuntimeInstance,
 )
+from .connectors import AsyncDeploymentConnectors, DeploymentConnectors
 
 if TYPE_CHECKING:  # pragma: no cover
     from .._http import AsyncTransport, SyncTransport
@@ -59,11 +60,201 @@ def _idempotency_headers(key: Optional[str]) -> Dict[str, str]:
     return {"Idempotency-Key": key or uuid.uuid4().hex}
 
 
+def _docker_deploy_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    return {**(metadata or {}), "deployment_product": "docker_deploy"}
+
+
 def _unwrap(data: Any) -> Any:
     """Most MIOSA endpoints wrap responses in ``{"data": ...}``."""
     if isinstance(data, dict) and "data" in data:
         return data["data"]
     return data
+
+
+def _unwrap_host(data: Any) -> Any:
+    data = _unwrap(data)
+    if isinstance(data, dict) and isinstance(data.get("host"), dict):
+        return data["host"]
+    return data
+
+
+def _deployment_product(deployment: Deployment) -> str:
+    return (
+        deployment.deployment_product
+        or str(deployment.metadata.get("deployment_product") or "miosa_deploy")
+    )
+
+
+def _docker_deploy_app(deployment: Deployment) -> Optional[Dict[str, Any]]:
+    if deployment.docker_deploy_app:
+        return deployment.docker_deploy_app
+    app = deployment.metadata.get("docker_deploy")
+    return app if isinstance(app, dict) else None
+
+
+def _runtime_port(app: Optional[Dict[str, Any]]) -> Optional[int]:
+    if not app:
+        return None
+    raw = app.get("runtime_port")
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return None
+
+
+def _add_check(
+    checks: List[Dict[str, Any]],
+    check_id: str,
+    ok: bool,
+    message: str,
+    *,
+    details: Optional[Dict[str, Any]] = None,
+    recovery: Optional[List[str]] = None,
+) -> None:
+    check: Dict[str, Any] = {"id": check_id, "ok": ok, "message": message}
+    if details is not None:
+        check["details"] = details
+    if recovery is not None:
+        check["recovery"] = recovery
+    checks.append(check)
+
+
+def _proof_result(
+    deployment: Deployment,
+    checks: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    next_actions: List[str] = []
+    for check in checks:
+        if check["ok"]:
+            continue
+        for action in check.get("recovery", []):
+            if action not in next_actions:
+                next_actions.append(action)
+    return {
+        "ok": all(check["ok"] for check in checks),
+        "deployment": deployment.model_dump(mode="json"),
+        "deployment_product": _deployment_product(deployment),
+        "public_url": deployment.public_url,
+        "checks": checks,
+        "next_actions": next_actions,
+    }
+
+
+def _add_deployment_checks(checks: List[Dict[str, Any]], deployment: Deployment) -> None:
+    _add_check(
+        checks,
+        "deployment_row",
+        True,
+        f"Deployment {deployment.id} exists with state={deployment.state}.",
+        details={"state": deployment.state},
+    )
+    _add_check(
+        checks,
+        "deployment_running",
+        deployment.state.value == "running",
+        "Deployment is marked running."
+        if deployment.state.value == "running"
+        else f"Deployment state is {deployment.state.value}, expected running.",
+        details={"state": deployment.state.value},
+        recovery=["Inspect deployment logs.", "Redeploy the deployment."],
+    )
+    _add_check(
+        checks,
+        "public_url_present",
+        bool(deployment.public_url),
+        f"Public URL is {deployment.public_url}."
+        if deployment.public_url
+        else "Deployment has no public URL.",
+        details={"public_url": deployment.public_url},
+    )
+
+
+def _add_docker_deploy_checks(
+    checks: List[Dict[str, Any]],
+    deployment: Deployment,
+    host: Optional[Dict[str, Any]],
+) -> None:
+    app = _docker_deploy_app(deployment)
+    host_id = (
+        deployment.docker_deploy_host_id
+        or deployment.metadata.get("docker_deploy_host_id")
+        or (app or {}).get("docker_deploy_host_id")
+        or (app or {}).get("host_id")
+    )
+    runtime_ip = (app or {}).get("runtime_ip") or (
+        deployment.metadata.get("runtime", {}).get("ip")
+        if isinstance(deployment.metadata.get("runtime"), dict)
+        else None
+    )
+    runtime_port = _runtime_port(app) or (
+        deployment.metadata.get("runtime", {}).get("port")
+        if isinstance(deployment.metadata.get("runtime"), dict)
+        else None
+    )
+
+    _add_check(
+        checks,
+        "docker_deploy_host_link",
+        bool(host_id),
+        f"Deployment links App Engine host {host_id}."
+        if host_id
+        else "Deployment has no App Engine host id.",
+        details={"docker_deploy_host_id": host_id},
+        recovery=["Ensure the workspace App Engine appliance."],
+    )
+    if host is not None:
+        host_ok = host.get("status") == "active" and host.get("appliance_status") == "healthy"
+        _add_check(
+            checks,
+            "docker_deploy_host_ready",
+            host_ok,
+            f"Host status={host.get('status')}, appliance={host.get('appliance_status')}.",
+            details={
+                "status": host.get("status"),
+                "appliance_status": host.get("appliance_status"),
+            },
+            recovery=["Check App Engine host health."],
+        )
+    _add_check(
+        checks,
+        "docker_deploy_app_row",
+        bool(app),
+        f"App Engine app status={(app or {}).get('status', 'unknown')}."
+        if app
+        else "App Engine app row is missing.",
+        details={
+            "app_id": (app or {}).get("app_id"),
+            "container_id": (app or {}).get("container_id"),
+            "status": (app or {}).get("status"),
+        }
+        if app
+        else None,
+        recovery=["Publish through App Engine again."],
+    )
+    _add_check(
+        checks,
+        "docker_deploy_container_route",
+        bool(
+            app
+            and app.get("status") == "running"
+            and app.get("container_id")
+            and runtime_ip
+            and runtime_port
+        ),
+        (
+            f"Container={(app or {}).get('container_id', 'missing')}, "
+            f"route={runtime_ip or 'missing'}:{runtime_port or 'missing'}."
+        )
+        if app
+        else "Cannot verify container route without App Engine app row.",
+        details={
+            "container_id": (app or {}).get("container_id") if app else None,
+            "runtime_ip": runtime_ip,
+            "runtime_port": runtime_port,
+        },
+        recovery=["Run App Engine doctor.", "Check appliance container health."],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +419,18 @@ class DeploymentReleases:
         )
         return DeploymentRelease.model_validate(_unwrap(data))
 
+    def promote(
+        self, release_id: str, *, idempotency_key: Optional[str] = None
+    ) -> Deployment:
+        key = idempotency_key or f"promote:{self._deployment_id}:{release_id}"
+        data = self._transport.request(
+            "POST",
+            f"/deployments/{self._deployment_id}/releases/{release_id}/promote",
+            json_body=None,
+            headers=_idempotency_headers(key),
+        )
+        return Deployment.model_validate(_unwrap(data))
+
 
 class AsyncDeploymentReleases:
     """Async release sub-resource scoped to a deployment ID."""
@@ -250,6 +453,18 @@ class AsyncDeploymentReleases:
             "GET", f"/deployments/{self._deployment_id}/releases/{release_id}"
         )
         return DeploymentRelease.model_validate(_unwrap(data))
+
+    async def promote(
+        self, release_id: str, *, idempotency_key: Optional[str] = None
+    ) -> Deployment:
+        key = idempotency_key or f"promote:{self._deployment_id}:{release_id}"
+        data = await self._transport.request(
+            "POST",
+            f"/deployments/{self._deployment_id}/releases/{release_id}/promote",
+            json_body=None,
+            headers=_idempotency_headers(key),
+        )
+        return Deployment.model_validate(_unwrap(data))
 
 
 # ---------------------------------------------------------------------------
@@ -564,6 +779,70 @@ class Deployments:
         )
         return Deployment.model_validate(_unwrap(data))
 
+    def create_docker_deploy(
+        self,
+        *,
+        name: str,
+        project_id: Optional[str] = None,
+        source_type: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+        build_command: Optional[str] = None,
+        run_command: Optional[str] = None,
+        auto_deploy: Optional[bool] = None,
+        database: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        external_workspace_id: Optional[str] = None,
+        external_user_id: Optional[str] = None,
+        external_project_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Deployment:
+        """Create a deployment on the workspace's dedicated App Engine runtime."""
+        return self.create(
+            name=name,
+            project_id=project_id,
+            source_type=source_type,
+            repo_url=repo_url,
+            branch=branch,
+            build_command=build_command,
+            run_command=run_command,
+            auto_deploy=auto_deploy,
+            database=database,
+            metadata=_docker_deploy_metadata(metadata),
+            external_workspace_id=external_workspace_id,
+            external_user_id=external_user_id,
+            external_project_id=external_project_id,
+            idempotency_key=idempotency_key,
+        )
+
+    def prove(self, deployment_id: str) -> Dict[str, Any]:
+        """Return a truth-first proof that a deployment is live and routable.
+
+        The result shape is stable: ``ok``, ``deployment``, ``checks``, and
+        ``next_actions``. App Engine deployments must have a real
+        ``docker_deploy_app`` row with a running container route.
+        """
+        deployment = self.get(deployment_id)
+        checks: List[Dict[str, Any]] = []
+        _add_deployment_checks(checks, deployment)
+
+        if _deployment_product(deployment) == "docker_deploy":
+            host_id = (
+                deployment.docker_deploy_host_id
+                or deployment.metadata.get("docker_deploy_host_id")
+            )
+            host: Optional[Dict[str, Any]] = None
+            if host_id:
+                host_payload = self._transport.request(
+                    "GET", f"/docker-deploy/hosts/{host_id}"
+                )
+                host_data = _unwrap_host(host_payload)
+                if isinstance(host_data, dict):
+                    host = host_data
+            _add_docker_deploy_checks(checks, deployment, host)
+
+        return _proof_result(deployment, checks)
+
     def update(
         self,
         deployment_id: str,
@@ -801,6 +1080,9 @@ class Deployments:
     def domains(self, deployment_id: str) -> DeploymentDomains:
         return DeploymentDomains(self._transport, deployment_id)
 
+    def connectors(self, deployment_id: str) -> DeploymentConnectors:
+        return DeploymentConnectors(self._transport, deployment_id)
+
 
 # ---------------------------------------------------------------------------
 # Async — top-level resource
@@ -863,6 +1145,7 @@ class AsyncDeployments:
         build_command: Optional[str] = None,
         run_command: Optional[str] = None,
         auto_deploy: Optional[bool] = None,
+        database: Optional[Any] = None,
         metadata: Optional[Dict[str, Any]] = None,
         external_workspace_id: Optional[str] = None,
         external_user_id: Optional[str] = None,
@@ -896,6 +1179,65 @@ class AsyncDeployments:
             headers=_idempotency_headers(idempotency_key),
         )
         return Deployment.model_validate(_unwrap(data))
+
+    async def create_docker_deploy(
+        self,
+        *,
+        name: str,
+        project_id: Optional[str] = None,
+        source_type: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+        build_command: Optional[str] = None,
+        run_command: Optional[str] = None,
+        auto_deploy: Optional[bool] = None,
+        database: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        external_workspace_id: Optional[str] = None,
+        external_user_id: Optional[str] = None,
+        external_project_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Deployment:
+        """Create a deployment on the workspace's dedicated App Engine runtime."""
+        return await self.create(
+            name=name,
+            project_id=project_id,
+            source_type=source_type,
+            repo_url=repo_url,
+            branch=branch,
+            build_command=build_command,
+            run_command=run_command,
+            auto_deploy=auto_deploy,
+            database=database,
+            metadata=_docker_deploy_metadata(metadata),
+            external_workspace_id=external_workspace_id,
+            external_user_id=external_user_id,
+            external_project_id=external_project_id,
+            idempotency_key=idempotency_key,
+        )
+
+    async def prove(self, deployment_id: str) -> Dict[str, Any]:
+        """Return a truth-first proof that a deployment is live and routable."""
+        deployment = await self.get(deployment_id)
+        checks: List[Dict[str, Any]] = []
+        _add_deployment_checks(checks, deployment)
+
+        if _deployment_product(deployment) == "docker_deploy":
+            host_id = (
+                deployment.docker_deploy_host_id
+                or deployment.metadata.get("docker_deploy_host_id")
+            )
+            host: Optional[Dict[str, Any]] = None
+            if host_id:
+                host_payload = await self._transport.request(
+                    "GET", f"/docker-deploy/hosts/{host_id}"
+                )
+                host_data = _unwrap_host(host_payload)
+                if isinstance(host_data, dict):
+                    host = host_data
+            _add_docker_deploy_checks(checks, deployment, host)
+
+        return _proof_result(deployment, checks)
 
     async def update(
         self,
@@ -1129,14 +1471,21 @@ class AsyncDeployments:
     ) -> AsyncDeploymentDomains:
         return AsyncDeploymentDomains(self._transport, deployment_id)
 
+    def connectors(
+        self, deployment_id: str
+    ) -> AsyncDeploymentConnectors:
+        return AsyncDeploymentConnectors(self._transport, deployment_id)
+
 
 __all__ = [
     "AsyncDeploymentDomains",
+    "AsyncDeploymentConnectors",
     "AsyncDeploymentReleases",
     "AsyncDeploymentRuntimeInstances",
     "AsyncDeploymentVersions",
     "AsyncDeployments",
     "DeploymentDomains",
+    "DeploymentConnectors",
     "DeploymentReleases",
     "DeploymentRuntimeInstances",
     "DeploymentVersions",

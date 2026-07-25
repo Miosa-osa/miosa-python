@@ -13,7 +13,7 @@ The top-level :class:`Email` resource exposes three sub-namespaces:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport

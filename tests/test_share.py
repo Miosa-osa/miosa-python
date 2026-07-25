@@ -8,7 +8,7 @@ from .conftest import SANDBOX_JSON
 
 SHARE = {
     "share_id": "share_abc",
-    "share_url": "https://3000-sbxabc.sandbox.miosa.app?ms=token123",
+    "share_url": "https://3000-sbxabc.sandbox.miosa.ai?ms=token123",
     "expires_at": "2026-05-26T01:00:00Z",
     "scope": "read",
 }

@@ -32,7 +32,7 @@ def _build_spawn_ws_url(
         ws_base = "ws://" + ws_base[len("http://"):]
     ws_base = ws_base.rstrip("/")
     return (
-        f"{ws_base}/computers/{computer_id}/exec/stream?"
+        f"{ws_base}/computers/{computer_id}/exec/spawn?"
         + urlencode({k: v for k, v in query.items() if v is not None})
     )
 

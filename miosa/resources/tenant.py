@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
 
 
-def _unwrap(data: Any, keys: tuple[str, ...] = ("data", "tenant", "items")) -> Any:
+def _unwrap(data: Any, keys: tuple[str, ...] = ("data", "tenant", "branding", "items")) -> Any:
     if isinstance(data, dict):
         for k in keys:
             if k in data:
@@ -28,7 +28,13 @@ class PreviewDomain:
 
     def set(self, domain: str) -> Dict[str, Any]:
         """PUT /api/v1/tenant/preview-domain → updated preview domain record."""
-        return _unwrap(self._t.request("PUT", "/tenant/preview-domain", json_body={"domain": domain}))
+        return _unwrap(
+            self._t.request(
+                "PUT",
+                "/tenant/preview-domain",
+                json_body={"preview_domain": domain},
+            )
+        )
 
     def verify(self) -> Dict[str, Any]:
         """POST /api/v1/tenant/preview-domain/verify → {verified, target, records}"""
@@ -49,7 +55,13 @@ class AsyncPreviewDomain:
         return _unwrap(await self._t.request("GET", "/tenant/preview-domain"))
 
     async def set(self, domain: str) -> Dict[str, Any]:
-        return _unwrap(await self._t.request("PUT", "/tenant/preview-domain", json_body={"domain": domain}))
+        return _unwrap(
+            await self._t.request(
+                "PUT",
+                "/tenant/preview-domain",
+                json_body={"preview_domain": domain},
+            )
+        )
 
     async def verify(self) -> Dict[str, Any]:
         return _unwrap(await self._t.request("POST", "/tenant/preview-domain/verify", json_body={}))
@@ -70,7 +82,13 @@ class Branding:
 
     def set(self, branding: Dict[str, Any]) -> Dict[str, Any]:
         """PUT /api/v1/tenant/branding — keys: product_name, logo_url, support_url, support_email, primary_color, background_color"""
-        return _unwrap(self._t.request("PUT", "/tenant/branding", json_body=branding))
+        return _unwrap(
+            self._t.request(
+                "PUT",
+                "/tenant/branding",
+                json_body={"branding": branding},
+            )
+        )
 
     def delete(self) -> None:
         """DELETE /api/v1/tenant/branding"""
@@ -87,7 +105,13 @@ class AsyncBranding:
         return _unwrap(await self._t.request("GET", "/tenant/branding"))
 
     async def set(self, branding: Dict[str, Any]) -> Dict[str, Any]:
-        return _unwrap(await self._t.request("PUT", "/tenant/branding", json_body=branding))
+        return _unwrap(
+            await self._t.request(
+                "PUT",
+                "/tenant/branding",
+                json_body={"branding": branding},
+            )
+        )
 
     async def delete(self) -> None:
         await self._t.request("DELETE", "/tenant/branding")

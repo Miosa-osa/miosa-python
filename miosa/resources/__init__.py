@@ -1,6 +1,7 @@
 """MIOSA resource modules."""
 
 from .agent import AgentResource, AsyncAgentResource
+from .agent_runtime_profiles import AgentRuntimeProfiles, AsyncAgentRuntimeProfiles
 from .checkpoints import AsyncCheckpoints, Checkpoints
 from .computer import AsyncComputer, AsyncScopedFs, Computer, ScopedFs
 from .computer_extras import (
@@ -26,17 +27,28 @@ from .computer_extras import (
 from .computers import AsyncComputersResource, ComputersResource
 from .custom_domains import AsyncCustomDomains, CustomDomains
 from .desktop import AsyncDesktopMixin, DesktopMixin
-from .events import AsyncEvents, EventStream, Events
+from .events import AsyncEvents, Events, EventStream
 from .exec import AsyncExecResource, ExecProcess, ExecResource
 from .files import AsyncFilesResource, FilesResource
 from .network_policy import AsyncNetworkPolicy, NetworkPolicy
+from .run_groups import AsyncRunGroups, RunGroups
+from .runs import AsyncRuns, RunEvent, Runs
+from .runtime_env import AsyncRuntimeEnv, RuntimeEnv
 from .sandboxes import AsyncSandboxes, Sandboxes
 from .services import AsyncServices, Services
+from .templates import AsyncTemplates, Templates
 from .workspaces import AsyncWorkspaces, Workspaces
 
 __all__ = [
     "AgentResource",
+    "RunGroups",
+    "AgentRuntimeProfiles",
+    "Runs",
+    "RunEvent",
     "AsyncAgentResource",
+    "AsyncRunGroups",
+    "AsyncAgentRuntimeProfiles",
+    "AsyncRuns",
     "AsyncCheckpoints",
     "AsyncComputer",
     "AsyncComputerAutoStop",
@@ -55,9 +67,11 @@ __all__ = [
     "AsyncExecResource",
     "AsyncFilesResource",
     "AsyncNetworkPolicy",
+    "AsyncRuntimeEnv",
     "AsyncSandboxes",
     "AsyncScopedFs",
     "AsyncServices",
+    "AsyncTemplates",
     "AsyncWorkspaces",
     "Checkpoints",
     "Computer",
@@ -79,8 +93,10 @@ __all__ = [
     "ExecResource",
     "FilesResource",
     "NetworkPolicy",
+    "RuntimeEnv",
     "Sandboxes",
     "ScopedFs",
     "Services",
+    "Templates",
     "Workspaces",
 ]

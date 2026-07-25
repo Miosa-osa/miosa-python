@@ -38,6 +38,11 @@ class Regions:
         result = _unwrap(data)
         return result if isinstance(result, list) else []
 
+    def catalog(self) -> Dict[str, Any]:
+        """Get canonical compute catalog, including product templates and readiness."""
+        result = _unwrap(self._t.request("GET", "/compute/catalog"))
+        return result if isinstance(result, dict) else {}
+
     def list_sizes(self) -> List[Dict[str, Any]]:
         """List available compute sizes."""
         data = self._t.request("GET", "/compute/sizes")
@@ -69,6 +74,10 @@ class AsyncRegions:
         data = await self._t.request("GET", "/compute/regions")
         result = _unwrap(data)
         return result if isinstance(result, list) else []
+
+    async def catalog(self) -> Dict[str, Any]:
+        result = _unwrap(await self._t.request("GET", "/compute/catalog"))
+        return result if isinstance(result, dict) else {}
 
     async def list_sizes(self) -> List[Dict[str, Any]]:
         data = await self._t.request("GET", "/compute/sizes")

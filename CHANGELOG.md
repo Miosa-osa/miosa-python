@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.2.21] — 2026-06-23
+
+### Added
+- `sandbox.expose_info()` returns the full preview URL contract: `url`, `url_class`, `stable_for_embedding`, and `recommended_next_action`.
+
+### Fixed
+- Preview URL fallbacks use `miosa.ai`.
+
+## [1.2.19] — 2026-06-23
+
+### Fixed
+- Normalize legacy duplicated sandbox preview hostnames returned by
+  `sandbox.expose()` / `sandbox.preview.expose()` from
+  `*.sandbox.sandbox.preview.*` to `*.sandbox.preview.*`.
+
+## [1.2.17] — 2026-06-22
+
+### Added
+- Computer external viewer-password helpers:
+  - `client.computers.viewer_password(computer_id)`
+  - `client.computers.rotate_viewer_password(computer_id)`
+  - `computer.viewer_password()`
+  - `computer.rotate_viewer_password()`
+- `ComputerSize.XS`.
+
+### Changed
+- `computers.create(size="xlarge")` normalizes the legacy alias to canonical `xl`.
+
 ## [1.1.0] — 2026-05-26
 
 ### Added — Phase 1-4 contract methods
