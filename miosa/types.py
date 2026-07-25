@@ -8,12 +8,12 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
 class ComputerSize(str, Enum):
+    XS = "xs"
     SMALL = "small"
     MEDIUM = "medium"
     LARGE = "large"
@@ -139,6 +139,9 @@ class ComputerCreate(BaseModel):
     workspace_id: Optional[str] = None
     external_workspace_id: Optional[str] = None
     external_project_id: Optional[str] = None
+    agent_runtime_profile_id: Optional[str] = None
+    agent_profile_id: Optional[str] = None
+    skip_agent_runtime_profile: Optional[bool] = None
 
 
 class ComputerUpdate(BaseModel):
@@ -242,7 +245,13 @@ class LaunchRequest(BaseModel):
 
     app: str = Field(..., alias="app")
 
-    def __init__(self, *, app_name: str | None = None, app: str | None = None, **data: object) -> None:
+    def __init__(
+        self,
+        *,
+        app_name: str | None = None,
+        app: str | None = None,
+        **data: object,
+    ) -> None:
         # Accept both keyword forms: app_name="..." (SDK callers) and app="..." (direct).
         resolved = app if app is not None else app_name
         if resolved is None:
@@ -370,7 +379,7 @@ class FileList(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Agent / CUA Sessions
+# Computer control sessions
 # ---------------------------------------------------------------------------
 
 class AgentSessionCreate(BaseModel):
@@ -513,6 +522,9 @@ class WorkspaceData(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = Field(None, alias="created_at")
     updated_at: Optional[datetime] = Field(None, alias="updated_at")
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
 
 
 class WorkspaceCreate(BaseModel):
@@ -759,6 +771,66 @@ class RuntimeInstanceState(str, Enum):
     DESTROYED = "destroyed"
 
 
+class DockerDeployHostStatus(str, Enum):
+    PENDING = "pending"
+    PROVISIONING = "provisioning"
+    BOOTSTRAPPING = "bootstrapping"
+    ACTIVE = "active"
+    DEGRADED = "degraded"
+    SUSPENDED = "suspended"
+    RETIRED = "retired"
+    ERROR = "error"
+
+
+class DockerDeployApplianceStatus(str, Enum):
+    NOT_INSTALLED = "not_installed"
+    INSTALLING = "installing"
+    STARTING = "starting"
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    UNKNOWN = "unknown"
+
+
+class DockerDeployHost(BaseModel):
+    """Dedicated workspace host that runs the App Engine appliance."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    id: str
+    tenant_id: str
+    workspace_id: str
+    external_workspace_id: Optional[str] = None
+    computer_id: Optional[str] = None
+    fleet_node_id: Optional[str] = None
+    status: DockerDeployHostStatus
+    size: str
+    region: str
+    portal_domain: Optional[str] = None
+    runtime_base_url: Optional[str] = None
+    agent_base_url: Optional[str] = None
+    appliance_image: Optional[str] = None
+    appliance_version: Optional[str] = None
+    appliance_status: DockerDeployApplianceStatus = DockerDeployApplianceStatus.NOT_INSTALLED
+    agent_last_seen_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class DockerDeployTemplate(BaseModel):
+    """Starter template for App Engine apps and compose workloads."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    runtime: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class Deployment(BaseModel):
     """Stable production object for a published app/site/API."""
 
@@ -767,6 +839,8 @@ class Deployment(BaseModel):
     id: str
     tenant_id: str
     owner_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
     name: str
     slug: str
     repo_url: Optional[str] = None
@@ -777,16 +851,22 @@ class Deployment(BaseModel):
     runtime_image: Optional[str] = None
     current_build_id: Optional[str] = None
     active_version_id: Optional[str] = None
+    active_release_id: Optional[str] = None
+    running_artifact_sha256: Optional[str] = None
     source_type: Optional[DeploymentSourceType] = None
     state: DeploymentState
     auto_deploy: bool = True
     custom_domain_id: Optional[str] = None
     linked_database_id: Optional[str] = None
+    deployment_product: Optional[str] = None
+    docker_deploy_host_id: Optional[str] = None
+    docker_deploy_app: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     external_workspace_id: Optional[str] = None
     external_user_id: Optional[str] = None
     external_project_id: Optional[str] = None
     public_url: Optional[str] = None
+    auto_subdomain: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -799,6 +879,8 @@ class DeploymentVersion(BaseModel):
     id: str
     deployment_id: str
     tenant_id: str
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
     created_by: Optional[str] = None
     source_sandbox_id: Optional[str] = None
     build_id: Optional[str] = None
@@ -834,6 +916,8 @@ class DeploymentRelease(BaseModel):
     deployment_version_id: str
     service_id: Optional[str] = None
     tenant_id: str
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
     external_workspace_id: Optional[str] = None
     external_user_id: Optional[str] = None
     external_project_id: Optional[str] = None

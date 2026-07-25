@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-
 # ---------------------------------------------------------------------------
 # Hosts
 # ---------------------------------------------------------------------------
@@ -216,8 +215,10 @@ class TunnelUpdateParams(BaseModel):
 class OcAgentSessionStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
+    SUCCEEDED = "succeeded"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELED = "canceled"
     CANCELLED = "cancelled"
 
 
@@ -225,28 +226,49 @@ class OcAgentSession(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     id: str
+    session_id: Optional[str] = None
     host_id: str
     task: str
     model_id: Optional[str] = None
+    model: Optional[str] = None
     status: OcAgentSessionStatus
-    max_turns: int
-    turns_used: int
-    created_at: str
-    updated_at: str
+    tools: List[str] = []
+    max_turns: Optional[int] = None
+    turns_used: Optional[int] = None
+    max_steps: Optional[int] = None
+    max_tokens: Optional[int] = None
+    timeout_ms: Optional[int] = None
+    agent_runtime_profile_id: Optional[str] = None
+    runtime_context: Dict[str, Any] = {}
+    sse_url: Optional[str] = None
+    optimal_session_id: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    inserted_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[str] = None
+    result_summary: Optional[str] = None
 
 
 class OcAgentSessionListResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    data: List[OcAgentSession]
+    data: List[OcAgentSession] = []
+    sessions: Optional[List[OcAgentSession]] = None
 
 
 class AgentDispatchParams(BaseModel):
     task: str
+    model: Optional[str] = None
     model_id: Optional[str] = None
     max_turns: Optional[int] = None
+    tools: Optional[List[str]] = None
+    budget: Optional[Dict[str, Any]] = None
+    agent_runtime_profile_id: Optional[str] = None
+    agent_profile_id: Optional[str] = None
+    skip_agent_runtime_profile: Optional[bool] = None
     context: Optional[Dict[str, Any]] = None
 
 

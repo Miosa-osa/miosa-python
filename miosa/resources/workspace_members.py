@@ -17,7 +17,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport

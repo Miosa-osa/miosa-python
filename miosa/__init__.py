@@ -10,24 +10,45 @@ Usage::
     screenshot = computer.screenshot()
 """
 
+from ._version import __version__
+from .agent_builds import (
+    AGENT_BUILD_KIND_SPECS,
+    DEFAULT_AGENT_BUILD_OUTPUT_ROOT,
+    DEFAULT_AGENT_BUILD_PACKET_VERSION,
+    create_agent_build_execution_packet,
+    create_agent_build_expected_outputs,
+    create_agent_build_instruction,
+    create_build_run_params,
+    get_agent_build_kind_spec,
+    resolve_agent_build_kind,
+)
 from .client import AsyncClient, AsyncMiosa, Client, Miosa
 from .errors import (
     AuthenticationError,
     ConnectionError,
+    EgressHostNotAllowedError,
+    InstallationRequiredError,
     InsufficientCreditsError,
+    ManagedProviderBindingOnlyError,
     MiosaError,
     NotFoundError,
     PermissionError,
+    ProjectNotLinkedError,
     RateLimitError,
+    ScopeNotAllowedError,
     ServerError,
+    SubjectNotAllowedError,
     TimeoutError,
+    TokenRefreshFailedError,
+    UserAuthorizationRequiredError,
     ValidationError,
 )
+from .resources.computer import AsyncComputer, Computer
+from .resources.sandboxes import AsyncSandbox, Sandbox
 from .types import (
     AgentEvent,
     AgentSession,
     AgentSessionStatus,
-    Computer as ComputerModel,
     ComputerEvent,
     ComputerSize,
     ComputerStatus,
@@ -49,6 +70,9 @@ from .types import (
     DeploymentVersionKind,
     DeploymentVersionState,
     DirEntry,
+    DockerDeployApplianceStatus,
+    DockerDeployHost,
+    DockerDeployHostStatus,
     ExecResult,
     ExternalAttribution,
     FileInfo,
@@ -64,33 +88,59 @@ from .types import (
     RuntimeInstance,
     RuntimeInstanceState,
     SandboxPreviewData,
+    ScreenSize,
     ServiceData,
     ServiceLogEvent,
     ServiceStatus,
-    ScreenSize,
     SnapshotData,
     SnapshotProgressEvent,
     SnapshotStatus,
     WindowInfo,
     WorkspaceData,
 )
+from .types import (
+    Computer as ComputerModel,
+)
 
 __all__ = [
+    "__version__",
     # Clients
     "Miosa",
     "AsyncMiosa",
     "Client",
     "AsyncClient",
+    "Computer",
+    "AsyncComputer",
+    "Sandbox",
+    "AsyncSandbox",
+    # Agent build helpers
+    "AGENT_BUILD_KIND_SPECS",
+    "DEFAULT_AGENT_BUILD_OUTPUT_ROOT",
+    "DEFAULT_AGENT_BUILD_PACKET_VERSION",
+    "create_agent_build_execution_packet",
+    "create_agent_build_expected_outputs",
+    "create_agent_build_instruction",
+    "create_build_run_params",
+    "get_agent_build_kind_spec",
+    "resolve_agent_build_kind",
     # Errors
     "MiosaError",
     "AuthenticationError",
     "ConnectionError",
+    "EgressHostNotAllowedError",
+    "InstallationRequiredError",
     "InsufficientCreditsError",
+    "ManagedProviderBindingOnlyError",
     "NotFoundError",
     "PermissionError",
+    "ProjectNotLinkedError",
     "RateLimitError",
+    "ScopeNotAllowedError",
     "ServerError",
+    "SubjectNotAllowedError",
     "TimeoutError",
+    "TokenRefreshFailedError",
+    "UserAuthorizationRequiredError",
     "ValidationError",
     # Types
     "AgentEvent",
@@ -118,6 +168,9 @@ __all__ = [
     "DeploymentVersionKind",
     "DeploymentVersionState",
     "DirEntry",
+    "DockerDeployApplianceStatus",
+    "DockerDeployHost",
+    "DockerDeployHostStatus",
     "ExecResult",
     "ExternalAttribution",
     "FileInfo",
@@ -143,5 +196,3 @@ __all__ = [
     "WindowInfo",
     "WorkspaceData",
 ]
-
-__version__ = "1.1.0"

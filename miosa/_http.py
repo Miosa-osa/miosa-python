@@ -14,14 +14,13 @@ from typing import Any, Dict, Iterator, Optional, Union
 
 import httpx
 
+from ._version import USER_AGENT
 from .errors import (
     ConnectionError,
     MiosaError,
-    RateLimitError,
     TimeoutError,
     raise_for_status,
 )
-
 
 DEFAULT_BASE_URL = "https://api.miosa.ai/api/v1"
 DEFAULT_TIMEOUT = 60.0
@@ -52,12 +51,15 @@ _DEFAULT_LIMITS = httpx.Limits(
 )
 
 
-def _build_headers(api_key: str) -> Dict[str, str]:
-    return {
+def _build_headers(api_key: str, tenant: Optional[str] = None) -> Dict[str, str]:
+    headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
-        "User-Agent": "miosa-python/0.1.0",
+        "User-Agent": USER_AGENT,
     }
+    if tenant:
+        headers["X-MIOSA-Tenant"] = tenant
+    return headers
 
 
 def _parse_body(response: httpx.Response) -> Any:
@@ -96,6 +98,7 @@ class SyncTransport:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        tenant: Optional[str] = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
@@ -105,7 +108,7 @@ class SyncTransport:
         # handshake — never instantiate a new client per request.
         self._client = httpx.Client(
             base_url=self._base_url,
-            headers=_build_headers(api_key),
+            headers=_build_headers(api_key, tenant),
             timeout=timeout,
             follow_redirects=True,
             http2=_HTTP2_AVAILABLE,
@@ -261,6 +264,7 @@ class AsyncTransport:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        tenant: Optional[str] = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
@@ -269,7 +273,7 @@ class AsyncTransport:
         # ``SyncTransport.__init__`` for the rationale.
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
-            headers=_build_headers(api_key),
+            headers=_build_headers(api_key, tenant),
             timeout=timeout,
             follow_redirects=True,
             http2=_HTTP2_AVAILABLE,
@@ -404,7 +408,9 @@ class AsyncTransport:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _clean_params(params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Union[str, int, float, bool]]]:
+def _clean_params(
+    params: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Union[str, int, float, bool]]]:
     """Strip ``None`` values from query params."""
     if params is None:
         return None

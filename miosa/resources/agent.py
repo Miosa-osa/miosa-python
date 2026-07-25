@@ -1,24 +1,24 @@
-"""Agent resource — CUA (Computer Use Agent) session management."""
+"""Computer control session management."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Optional
 
-from ..types import AgentSession, AgentSessionCreate, AgentSessionList
+from ..types import AgentSession, AgentSessionCreate
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
 
 
 class AgentResource:
-    """Synchronous CUA session resource scoped to a single computer."""
+    """Synchronous computer control session resource scoped to one computer."""
 
     def __init__(self, transport: SyncTransport, computer_id: str) -> None:
         self._transport = transport
         self._computer_id = computer_id
 
     def _base(self) -> str:
-        return f"/computers/{self._computer_id}/cua/sessions"
+        return f"/computers/{self._computer_id}/control/sessions"
 
     def run(
         self,
@@ -27,7 +27,7 @@ class AgentResource:
         model_id: Optional[str] = None,
         max_turns: Optional[int] = None,
     ) -> AgentSession:
-        """Start a new CUA agent session."""
+        """Start a new computer control session."""
         body = AgentSessionCreate(goal=goal, model_id=model_id, max_turns=max_turns)
         data = self._transport.request(
             "POST", self._base(), json_body=body.model_dump(exclude_none=True)
@@ -56,7 +56,7 @@ class AgentResource:
         return AgentSession.model_validate(data)
 
     def task(self, session_id: str, instruction: str) -> AgentSession:
-        """Send a mid-session instruction to a running CUA session."""
+        """Send a mid-session instruction to a running computer control session."""
         data = self._transport.request(
             "POST",
             f"{self._base()}/{session_id}/task",
@@ -65,14 +65,14 @@ class AgentResource:
         return AgentSession.model_validate(data)
 
     def pause(self, session_id: str) -> AgentSession:
-        """Pause a running CUA session."""
+        """Pause a running computer control session."""
         data = self._transport.request(
             "POST", f"{self._base()}/{session_id}/pause", json_body={}
         )
         return AgentSession.model_validate(data)
 
     def resume(self, session_id: str) -> AgentSession:
-        """Resume a paused CUA session."""
+        """Resume a paused computer control session."""
         data = self._transport.request(
             "POST", f"{self._base()}/{session_id}/resume", json_body={}
         )
@@ -80,14 +80,14 @@ class AgentResource:
 
 
 class AsyncAgentResource:
-    """Asynchronous CUA session resource scoped to a single computer."""
+    """Asynchronous computer control session resource scoped to one computer."""
 
     def __init__(self, transport: AsyncTransport, computer_id: str) -> None:
         self._transport = transport
         self._computer_id = computer_id
 
     def _base(self) -> str:
-        return f"/computers/{self._computer_id}/cua/sessions"
+        return f"/computers/{self._computer_id}/control/sessions"
 
     async def run(
         self,
@@ -121,7 +121,7 @@ class AsyncAgentResource:
         return AgentSession.model_validate(data)
 
     async def task(self, session_id: str, instruction: str) -> AgentSession:
-        """Send a mid-session instruction to a running CUA session."""
+        """Send a mid-session instruction to a running computer control session."""
         data = await self._transport.request(
             "POST",
             f"{self._base()}/{session_id}/task",
@@ -130,14 +130,14 @@ class AsyncAgentResource:
         return AgentSession.model_validate(data)
 
     async def pause(self, session_id: str) -> AgentSession:
-        """Pause a running CUA session."""
+        """Pause a running computer control session."""
         data = await self._transport.request(
             "POST", f"{self._base()}/{session_id}/pause", json_body={}
         )
         return AgentSession.model_validate(data)
 
     async def resume(self, session_id: str) -> AgentSession:
-        """Resume a paused CUA session."""
+        """Resume a paused computer control session."""
         data = await self._transport.request(
             "POST", f"{self._base()}/{session_id}/resume", json_body={}
         )

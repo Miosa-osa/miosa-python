@@ -8,9 +8,9 @@ import hashlib
 import hmac
 import time
 
+import httpx
 import pytest
 import respx
-import httpx
 
 from miosa import Miosa
 from miosa.resources.webhooks import verify_signature
@@ -28,36 +28,52 @@ def client():
 # tenant.preview_domain
 # ---------------------------------------------------------------------------
 
+
 class TestTenantPreviewDomain:
     @respx.mock
     def test_get(self, client: Miosa):
         respx.get(f"{BASE_URL}/tenant/preview-domain").mock(
-            return_value=httpx.Response(200, json={"domain": "preview.acme.com", "verified_at": None, "cname_target": "proxy.miosa.app"})
+            return_value=httpx.Response(
+                200,
+                json={
+                    "preview_domain": "preview.acme.com",
+                    "verified_at": None,
+                    "cname_target": "proxy.miosa.app",
+                },
+            )
         )
         result = client.tenant.preview_domain.get()
-        assert result["domain"] == "preview.acme.com"
+        assert result["preview_domain"] == "preview.acme.com"
 
     @respx.mock
     def test_set(self, client: Miosa):
-        respx.put(f"{BASE_URL}/tenant/preview-domain").mock(
-            return_value=httpx.Response(200, json={"domain": "preview.acme.com", "verified_at": None, "cname_target": "proxy.miosa.app"})
+        route = respx.put(f"{BASE_URL}/tenant/preview-domain").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "preview_domain": "preview.acme.com",
+                    "verified_at": None,
+                    "cname_target": "proxy.miosa.app",
+                },
+            )
         )
         result = client.tenant.preview_domain.set("preview.acme.com")
-        assert result["domain"] == "preview.acme.com"
+        assert result["preview_domain"] == "preview.acme.com"
+        assert route.calls[0].request.content == b'{"preview_domain":"preview.acme.com"}'
 
     @respx.mock
     def test_verify(self, client: Miosa):
         respx.post(f"{BASE_URL}/tenant/preview-domain/verify").mock(
-            return_value=httpx.Response(200, json={"verified": True, "target": "proxy.miosa.app", "records": []})
+            return_value=httpx.Response(
+                200, json={"verified": True, "target": "proxy.miosa.app", "records": []}
+            )
         )
         result = client.tenant.preview_domain.verify()
         assert result["verified"] is True
 
     @respx.mock
     def test_delete(self, client: Miosa):
-        respx.delete(f"{BASE_URL}/tenant/preview-domain").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{BASE_URL}/tenant/preview-domain").mock(return_value=httpx.Response(204))
         client.tenant.preview_domain.delete()  # should not raise
 
 
@@ -65,11 +81,17 @@ class TestTenantPreviewDomain:
 # tenant.branding
 # ---------------------------------------------------------------------------
 
+
 class TestTenantBranding:
     @respx.mock
     def test_get(self, client: Miosa):
         respx.get(f"{BASE_URL}/tenant/branding").mock(
-            return_value=httpx.Response(200, json={"product_name": "Acme AI", "logo_url": "https://acme.com/logo.png"})
+            return_value=httpx.Response(
+                200,
+                json={
+                    "branding": {"product_name": "Acme AI", "logo_url": "https://acme.com/logo.png"}
+                },
+            )
         )
         result = client.tenant.branding.get()
         assert result["product_name"] == "Acme AI"
@@ -77,17 +99,19 @@ class TestTenantBranding:
     @respx.mock
     def test_set(self, client: Miosa):
         branding = {"product_name": "Acme AI", "primary_color": "#ff0000"}
-        respx.put(f"{BASE_URL}/tenant/branding").mock(
-            return_value=httpx.Response(200, json=branding)
+        route = respx.put(f"{BASE_URL}/tenant/branding").mock(
+            return_value=httpx.Response(200, json={"branding": branding})
         )
         result = client.tenant.branding.set(branding)
         assert result["primary_color"] == "#ff0000"
+        assert (
+            route.calls[0].request.content
+            == b'{"branding":{"product_name":"Acme AI","primary_color":"#ff0000"}}'
+        )
 
     @respx.mock
     def test_delete(self, client: Miosa):
-        respx.delete(f"{BASE_URL}/tenant/branding").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{BASE_URL}/tenant/branding").mock(return_value=httpx.Response(204))
         client.tenant.branding.delete()  # should not raise
 
 
@@ -143,13 +167,19 @@ class TestSandboxUpdate:
 # sandbox.preview_token
 # ---------------------------------------------------------------------------
 
+
 class TestSandboxPreviewToken:
     @respx.mock
     def test_preview_token(self, client: Miosa):
         respx.post(f"{BASE_URL}/sandboxes").mock(
             return_value=httpx.Response(200, json={"data": SANDBOX_JSON})
         )
-        token_resp = {"token": "tok_xyz", "url": "https://preview.miosa.app?t=tok_xyz", "expires_at": "2026-05-26T01:00:00Z", "scope": "read"}
+        token_resp = {
+            "token": "tok_xyz",
+            "url": "https://preview.miosa.app?t=tok_xyz",
+            "expires_at": "2026-05-26T01:00:00Z",
+            "scope": "read",
+        }
         respx.post(f"{BASE_URL}/sandboxes/sbx_abc123/preview-token").mock(
             return_value=httpx.Response(200, json=token_resp)
         )
@@ -163,24 +193,42 @@ class TestSandboxPreviewToken:
 # sandboxes.create with slug + external_user_id
 # ---------------------------------------------------------------------------
 
+
 class TestSandboxCreateSlug:
     @respx.mock
     def test_create_with_slug_and_external_ids(self, client: Miosa):
+        response = {
+            **SANDBOX_JSON,
+            "external_workspace_id": "ws_1",
+            "external_user_id": "usr_1",
+            "external_project_id": "proj_1",
+        }
         route = respx.post(f"{BASE_URL}/sandboxes").mock(
-            return_value=httpx.Response(200, json={"data": SANDBOX_JSON})
+            return_value=httpx.Response(200, json={"data": response})
         )
-        client.sandboxes.create(slug="my-sandbox", external_user_id="usr_1", external_workspace_id="ws_1", external_project_id="proj_1")
+        sandbox = client.sandboxes.create(
+            slug="my-sandbox",
+            external_user_id="usr_1",
+            external_workspace_id="ws_1",
+            external_project_id="proj_1",
+        )
         body = route.calls[0].request
         import json
+
         sent = json.loads(body.content)
         assert sent["slug"] == "my-sandbox"
         assert sent["external_user_id"] == "usr_1"
         assert sent["external_workspace_id"] == "ws_1"
+        assert sent["external_project_id"] == "proj_1"
+        assert sandbox.data["external_user_id"] == "usr_1"
+        assert sandbox.data["external_workspace_id"] == "ws_1"
+        assert sandbox.data["external_project_id"] == "proj_1"
 
 
 # ---------------------------------------------------------------------------
 # webhooks.verify_signature
 # ---------------------------------------------------------------------------
+
 
 class TestVerifySignature:
     def _make_header(self, payload: bytes, secret: str, ts: int | None = None) -> str:

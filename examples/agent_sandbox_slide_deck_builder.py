@@ -8,7 +8,7 @@ agent = Agent(
         model=os.environ.get("GROQ_MODEL", "moonshotai/kimi-k2-instruct-0905"),
     ),
     miosa_api_key=os.environ["MIOSA_API_KEY"],
-    miosa_tool_options={"default_size": "medium", "allow_destroy": False},
+    miosa_tool_options={"default_size": "small", "allow_destroy": False},
 )
 
 result = agent.run(

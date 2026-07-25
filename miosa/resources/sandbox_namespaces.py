@@ -871,7 +871,6 @@ class SandboxGit:
         self._sandbox = sandbox
 
     def _run(self, command: str, cwd: str | None = None) -> GitResult:
-        from .sandboxes import ExecOptions, _exec_payload  # local to avoid circular
 
         opts: ExecOptions | None = {"cwd": cwd} if cwd else None
         result = self._sandbox._run_exec(command, opts)
@@ -1003,7 +1002,6 @@ class AsyncSandboxGit:
         self._sandbox = sandbox
 
     async def _run(self, command: str, cwd: str | None = None) -> GitResult:
-        from .sandboxes import ExecOptions  # local to avoid circular
 
         opts: ExecOptions | None = {"cwd": cwd} if cwd else None
         result = await self._sandbox._run_exec(command, opts)

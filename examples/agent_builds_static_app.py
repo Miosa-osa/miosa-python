@@ -91,8 +91,7 @@ def main() -> None:
         print("[1] creating sandbox…", flush=True)
         sandbox = miosa.sandboxes.create(
             template_id="debian-12-sandbox-v8",
-            cpu_count=1,
-            memory_mb=1024,
+            size="small",
             timeout_sec=1800,
             external_workspace_id=ext_workspace,
             external_user_id=ext_user,

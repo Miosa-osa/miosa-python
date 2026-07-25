@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
@@ -48,6 +48,32 @@ class Volumes:
     def delete(self, volume_id: str) -> None:
         self._t.request("DELETE", f"/volumes/{volume_id}")
 
+    # ── Attachment helpers ─────────────────────────────────────────────────
+
+    def list_attachments(self, computer_id: str) -> List[Dict[str, Any]]:
+        """List volume attachments for a computer."""
+        data = self._t.request("GET", f"/computers/{computer_id}/volumes")
+        result = _unwrap(data, keys=("data", "attachments", "volumes", "items"))
+        return result if isinstance(result, list) else []
+
+    def attach(
+        self,
+        computer_id: str,
+        volume_id: str,
+        mount_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Attach *volume_id* to *computer_id*, optionally at *mount_path*."""
+        body: Dict[str, Any] = {"volume_id": volume_id}
+        if mount_path is not None:
+            body["mount_path"] = mount_path
+        return _unwrap(
+            self._t.request("POST", f"/computers/{computer_id}/volumes", json_body=body)
+        )
+
+    def detach(self, computer_id: str, attachment_id: str) -> None:
+        """Remove an attachment by *attachment_id* from *computer_id*."""
+        self._t.request("DELETE", f"/computers/{computer_id}/volumes/{attachment_id}")
+
 
 class AsyncVolumes:
     """Async persistent volumes."""
@@ -80,3 +106,29 @@ class AsyncVolumes:
 
     async def delete(self, volume_id: str) -> None:
         await self._t.request("DELETE", f"/volumes/{volume_id}")
+
+    # ── Attachment helpers ─────────────────────────────────────────────────
+
+    async def list_attachments(self, computer_id: str) -> List[Dict[str, Any]]:
+        """List volume attachments for a computer."""
+        data = await self._t.request("GET", f"/computers/{computer_id}/volumes")
+        result = _unwrap(data, keys=("data", "attachments", "volumes", "items"))
+        return result if isinstance(result, list) else []
+
+    async def attach(
+        self,
+        computer_id: str,
+        volume_id: str,
+        mount_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Attach *volume_id* to *computer_id*, optionally at *mount_path*."""
+        body: Dict[str, Any] = {"volume_id": volume_id}
+        if mount_path is not None:
+            body["mount_path"] = mount_path
+        return _unwrap(
+            await self._t.request("POST", f"/computers/{computer_id}/volumes", json_body=body)
+        )
+
+    async def detach(self, computer_id: str, attachment_id: str) -> None:
+        """Remove an attachment by *attachment_id* from *computer_id*."""
+        await self._t.request("DELETE", f"/computers/{computer_id}/volumes/{attachment_id}")

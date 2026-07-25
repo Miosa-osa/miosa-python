@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 
-from .conftest import API_KEY, BASE_URL
-
 
 class TestPreviewDomain:
     def test_get(self, mock_api, client):
@@ -23,7 +21,7 @@ class TestPreviewDomain:
         result = client.tenant.preview_domain.set("new.example.com")
         assert result["domain"] == "new.example.com"
         body = json.loads(route.calls.last.request.content)
-        assert body == {"domain": "new.example.com"}
+        assert body == {"preview_domain": "new.example.com"}
 
     def test_verify(self, mock_api, client):
         route = mock_api.post("/tenant/preview-domain/verify").respond(

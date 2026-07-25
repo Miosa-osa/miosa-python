@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Union
 
-from .types import FsEntry, FsListResponse, FsStat, WsTicket
+from .types import FsEntry, FsListResponse, FsStat
 
 if TYPE_CHECKING:
     from ..._http import AsyncTransport, SyncTransport

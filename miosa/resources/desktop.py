@@ -57,8 +57,8 @@ class DesktopMixin:
             "GET", self._desktop_path("screenshot"), raw_response=True
         )
         if resp.status_code >= 400:
-            from ..errors import raise_for_status, _extract_request_id
             from .._http import _parse_body
+            from ..errors import _extract_request_id, raise_for_status
             body = _parse_body(resp)
             raise_for_status(resp.status_code, body, _extract_request_id(resp))
         return resp.content
@@ -67,7 +67,7 @@ class DesktopMixin:
         """Capture a PNG screenshot encoded as a base64 string.
 
         Convenience for AI agents that pass screenshots to LLMs without
-        writing to disk. Matches the orgo.ai pattern.
+        writing to disk.
         """
         import base64
         return base64.b64encode(self.screenshot()).decode("ascii")
@@ -108,12 +108,20 @@ class DesktopMixin:
         )
         return ActionResponse.model_validate(data)
 
+    def write(self, text: str, *, delay: Optional[int] = None) -> ActionResponse:
+        """Alias for :meth:`type` used by simple computer-control loops."""
+        return self.type(text, delay=delay)
+
     def key(self, key: str) -> ActionResponse:
         body = KeyRequest(key=key)
         data = self._transport.request(
             "POST", self._desktop_path("key"), json_body=body.model_dump()
         )
         return ActionResponse.model_validate(data)
+
+    def press(self, key: str) -> ActionResponse:
+        """Alias for :meth:`key` used by simple computer-control loops."""
+        return self.key(key)
 
     def hotkey(self, *keys: str) -> ActionResponse:
         """Press multiple keys simultaneously (e.g. ``hotkey("ctrl", "c")``).
@@ -206,7 +214,7 @@ class DesktopMixin:
         return self.cursor()
 
     def cursor_position(self) -> CursorPosition:
-        """Return the current cursor position. Orgo-style alias for :meth:`cursor`."""
+        """Return the current cursor position. Alias for :meth:`cursor`."""
         return self.cursor()
 
     def get_screen_size(self) -> ScreenSize:
@@ -215,7 +223,7 @@ class DesktopMixin:
         return ScreenSize.model_validate(data)
 
     def screen_size(self) -> ScreenSize:
-        """Return the screen resolution. Orgo-style alias for :meth:`get_screen_size`."""
+        """Return the screen resolution. Alias for :meth:`get_screen_size`."""
         return self.get_screen_size()
 
     def accessibility_tree(self) -> Dict[str, Any]:
@@ -298,7 +306,7 @@ class DesktopMixin:
         return ""
 
     def clipboard_get(self) -> str:
-        """Return clipboard text. Orgo-style alias for :meth:`get_clipboard`."""
+        """Return clipboard text. Alias for :meth:`get_clipboard`."""
         return self.get_clipboard()
 
     def set_clipboard(self, text: str) -> ActionResponse:
@@ -309,7 +317,7 @@ class DesktopMixin:
         return ActionResponse.model_validate(data)
 
     def clipboard_set(self, text: str) -> ActionResponse:
-        """Set clipboard text. Orgo-style alias for :meth:`set_clipboard`."""
+        """Set clipboard text. Alias for :meth:`set_clipboard`."""
         return self.set_clipboard(text)
 
     # ── Window management ──────────────────────────────────────────────────
@@ -380,6 +388,10 @@ class DesktopMixin:
         )
         return ActionResponse.model_validate(data)
 
+    def move_mouse(self, x: int, y: int) -> ActionResponse:
+        """Alias for :meth:`move_cursor` used by simple computer-control loops."""
+        return self.move_cursor(x, y)
+
     def mouse_down(self, x: int, y: int, button: str = "left") -> ActionResponse:
         """Press and hold a mouse button at (*x*, *y*).
 
@@ -445,8 +457,8 @@ class AsyncDesktopMixin:
             "GET", self._desktop_path("screenshot"), raw_response=True
         )
         if resp.status_code >= 400:
-            from ..errors import raise_for_status, _extract_request_id
             from .._http import _parse_body
+            from ..errors import _extract_request_id, raise_for_status
             body = _parse_body(resp)
             raise_for_status(resp.status_code, body, _extract_request_id(resp))
         return resp.content
@@ -479,12 +491,20 @@ class AsyncDesktopMixin:
         )
         return ActionResponse.model_validate(data)
 
+    async def write(self, text: str, *, delay: Optional[int] = None) -> ActionResponse:
+        """Alias for :meth:`type` used by simple computer-control loops."""
+        return await self.type(text, delay=delay)
+
     async def key(self, key: str) -> ActionResponse:
         body = KeyRequest(key=key)
         data = await self._transport.request(
             "POST", self._desktop_path("key"), json_body=body.model_dump()
         )
         return ActionResponse.model_validate(data)
+
+    async def press(self, key: str) -> ActionResponse:
+        """Alias for :meth:`key` used by simple computer-control loops."""
+        return await self.key(key)
 
     async def hotkey(self, *keys: str) -> ActionResponse:
         """Press multiple keys simultaneously (e.g. ``hotkey("ctrl", "c")``).
@@ -577,7 +597,7 @@ class AsyncDesktopMixin:
         return await self.cursor()
 
     async def cursor_position(self) -> CursorPosition:
-        """Return current cursor position. Orgo-style async alias for :meth:`cursor`."""
+        """Return current cursor position. Async alias for :meth:`cursor`."""
         return await self.cursor()
 
     async def get_screen_size(self) -> ScreenSize:
@@ -586,7 +606,7 @@ class AsyncDesktopMixin:
         return ScreenSize.model_validate(data)
 
     async def screen_size(self) -> ScreenSize:
-        """Return screen resolution. Orgo-style async alias for :meth:`get_screen_size`."""
+        """Return screen resolution. Async alias for :meth:`get_screen_size`."""
         return await self.get_screen_size()
 
     async def accessibility_tree(self) -> Dict[str, Any]:
@@ -661,7 +681,7 @@ class AsyncDesktopMixin:
         return ""
 
     async def clipboard_get(self) -> str:
-        """Return clipboard text. Orgo-style async alias for :meth:`get_clipboard`."""
+        """Return clipboard text. Async alias for :meth:`get_clipboard`."""
         return await self.get_clipboard()
 
     async def set_clipboard(self, text: str) -> ActionResponse:
@@ -672,7 +692,7 @@ class AsyncDesktopMixin:
         return ActionResponse.model_validate(data)
 
     async def clipboard_set(self, text: str) -> ActionResponse:
-        """Set clipboard text. Orgo-style async alias for :meth:`set_clipboard`."""
+        """Set clipboard text. Async alias for :meth:`set_clipboard`."""
         return await self.set_clipboard(text)
 
     # ── Window management ──────────────────────────────────────────────────
@@ -743,6 +763,10 @@ class AsyncDesktopMixin:
             "POST", self._desktop_path("move"), json_body=body.model_dump()
         )
         return ActionResponse.model_validate(data)
+
+    async def move_mouse(self, x: int, y: int) -> ActionResponse:
+        """Alias for :meth:`move_cursor` used by simple computer-control loops."""
+        return await self.move_cursor(x, y)
 
     async def mouse_down(self, x: int, y: int, button: str = "left") -> ActionResponse:
         """Press and hold a mouse button at (*x*, *y*).

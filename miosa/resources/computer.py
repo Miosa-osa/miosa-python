@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 from ..types import (
     ActionResponse,
@@ -13,6 +13,7 @@ from ..types import (
 from ..types import (
     Computer as ComputerModel,
 )
+from .agent import AgentResource, AsyncAgentResource
 from .checkpoints import AsyncCheckpoints, Checkpoints
 from .computer_extras import (
     AsyncComputerAutoStop,
@@ -34,6 +35,7 @@ from .computer_extras import (
     ComputerTerminal,
     ComputerVolumes,
 )
+from .connectors import AsyncComputerConnectors, ComputerConnectors
 from .custom_domains import AsyncCustomDomains, CustomDomains
 from .desktop import AsyncDesktopMixin, DesktopMixin
 from .egress_audit import AsyncComputerAudit, ComputerAudit
@@ -43,7 +45,6 @@ from .events import AsyncEvents, Events
 from .exec import AsyncExecResource, ExecResource
 from .files import AsyncFilesResource, FilesResource
 from .network_policy import AsyncNetworkPolicy, NetworkPolicy
-from .agent import AgentResource, AsyncAgentResource
 from .services import AsyncServices, Services
 
 if TYPE_CHECKING:
@@ -188,6 +189,7 @@ class Computer(DesktopMixin):
         self.network_policy = NetworkPolicy(transport, self._computer_id)
         self.events = Events(transport, self._computer_id)
         self.agent = AgentResource(transport, self._computer_id)
+        self.connectors = ComputerConnectors(transport, self._computer_id)
         # Egress (security) namespaces — pre-scoped to this computer id
         self.secrets = ComputerSecrets(transport, self._computer_id)
         self.network = ComputerNetwork(transport, self._computer_id)
@@ -245,15 +247,26 @@ class Computer(DesktopMixin):
 
             computer.bash("python -m http.server 3000 &")
             url = computer.preview_url(3000)
-            # => "https://3000-<slug>.sandbox.miosa.ai/"
+            # => "https://3000-<slug>.sandbox.<tenant-domain>/"
         """
         p = path if path.startswith("/") else f"/{path}"
-        return f"https://{port}-{self.slug}.sandbox.miosa.ai{p}"
+        return f"https://{port}-{self.slug}.sandbox.{self._preview_domain}{p}"
 
     @property
     def public_url(self) -> str:
         """Root preview URL — whatever is served on the default app port."""
-        return f"https://{self.slug}.sandbox.miosa.ai"
+        return f"https://{self.slug}.sandbox.{self._preview_domain}"
+
+    @property
+    def _preview_domain(self) -> str:
+        """Tenant's preview/base domain (white-label aware).
+
+        Uses the server-provided ``preview_domain`` so white-label tenants
+        (e.g. ``cliniciq.com``) get correct URLs. Never hardcodes a domain;
+        falls back to the platform default ``miosa.ai`` only when the server
+        did not supply one.
+        """
+        return getattr(self._data, "preview_domain", None) or "miosa.ai"
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -292,6 +305,93 @@ class Computer(DesktopMixin):
         )
         self._data = ComputerModel.model_validate(data)
         return self
+
+    def run_agent(
+        self,
+        instruction: str,
+        *,
+        runner: str = "claude-code",
+        provider: str | None = None,
+        model: str | None = None,
+        cwd: str = "/workspace",
+        timeout: int | None = None,
+        wait: bool = True,
+        env: dict[str, str] | None = None,
+        output_format: str | None = None,
+        resume_session_id: str | None = None,
+        json: bool | None = None,
+        output_schema: str | None = None,
+        image: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Run an AI agent inside this Computer."""
+        body = {
+            "instruction": instruction,
+            "target_kind": "computer",
+            "target_id": self._computer_id,
+            "runtime_id": self._computer_id,
+            "computer_id": self._computer_id,
+            "runner": runner,
+            "provider": provider,
+            "model": model,
+            "cwd": cwd,
+            "timeout": timeout,
+            "wait": wait,
+            "env": env,
+            "output_format": output_format,
+            "resume_session_id": resume_session_id,
+            "json": json,
+            "output_schema": output_schema,
+            "image": image,
+            **kwargs,
+        }
+        body = {key: value for key, value in body.items() if value is not None}
+        data = self._transport.request("POST", "/runs", json_body=body)
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    def prompt(
+        self,
+        prompt: str,
+        *,
+        provider: str | None = "claude",
+        model: str | None = None,
+        cwd: str = "/workspace",
+        timeout: int | None = None,
+        wait: bool = True,
+        env: dict[str, str] | None = None,
+        output_format: str | None = None,
+        resume_session_id: str | None = None,
+        json: bool | None = None,
+        output_schema: str | None = None,
+        image: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Dispatch a prompt into this Computer through the Agent Runs API."""
+        body = {
+            "prompt": prompt,
+            "target_kind": "computer",
+            "target_id": self._computer_id,
+            "computer_id": self._computer_id,
+            "provider": provider,
+            "model": model,
+            "cwd": cwd,
+            "timeout": timeout,
+            "wait": wait,
+            "env": env,
+            "output_format": output_format,
+            "resume_session_id": resume_session_id,
+            "json": json,
+            "output_schema": output_schema,
+            "image": image,
+            **kwargs,
+        }
+        body = {key: value for key, value in body.items() if value is not None}
+        data = self._transport.request("POST", "/agent-runs", json_body=body)
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            return data["data"]
+        return data if isinstance(data, dict) else {}
 
     # -- exec shortcuts -----------------------------------------------------
 
@@ -345,6 +445,29 @@ class Computer(DesktopMixin):
             return data["data"]
         return data
 
+    def viewer_password(self) -> dict:
+        """Return whether the external/raw desktop viewer password is set.
+
+        Authenticated MIOSA platform users should use the platform desktop
+        entry URL and do not need this password. This is for raw external
+        viewer links such as ``*.computer.miosa.ai/desktop/index.html``.
+        """
+        data = self._transport.request(
+            "GET", f"/computers/{self._computer_id}/viewer-password"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    def rotate_viewer_password(self) -> dict:
+        """Rotate and return the external/raw desktop viewer password once."""
+        data = self._transport.request(
+            "POST", f"/computers/{self._computer_id}/viewer-password/rotate"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
     def apps(self) -> list:
         """List apps installed inside the computer."""
         data = self._transport.request(
@@ -377,6 +500,18 @@ class Computer(DesktopMixin):
         if isinstance(data, dict) and "data" in data and len(data) <= 2:
             return data["data"]
         return data
+
+    def embed(self) -> dict:
+        """Mint a passwordless browser embed URL for authenticated sessions.
+
+        Use this inside MIOSA or tenant apps. Raw shared desktop URLs can still
+        use the viewer password flow when opened outside an authenticated
+        platform.
+        """
+        data = self._transport.request("GET", f"/computers/{self._computer_id}/embed")
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
 
     def metrics(self, window: str = "1h") -> dict:
         """Shortcut for :attr:`metrics_resource`.get() — read time-series metrics."""
@@ -494,6 +629,7 @@ class AsyncComputer(AsyncDesktopMixin):
         self.network_policy = AsyncNetworkPolicy(transport, self._computer_id)
         self.events = AsyncEvents(transport, self._computer_id)
         self.agent = AsyncAgentResource(transport, self._computer_id)
+        self.connectors = AsyncComputerConnectors(transport, self._computer_id)
         # Egress (security) namespaces — pre-scoped to this computer id
         self.secrets = AsyncComputerSecrets(transport, self._computer_id)
         self.network = AsyncComputerNetwork(transport, self._computer_id)
@@ -539,11 +675,17 @@ class AsyncComputer(AsyncDesktopMixin):
 
     def preview_url(self, port: int, path: str = "/") -> str:
         p = path if path.startswith("/") else f"/{path}"
-        return f"https://{port}-{self.slug}.sandbox.miosa.ai{p}"
+        return f"https://{port}-{self.slug}.sandbox.{self._preview_domain}{p}"
 
     @property
     def public_url(self) -> str:
-        return f"https://{self.slug}.sandbox.miosa.ai"
+        return f"https://{self.slug}.sandbox.{self._preview_domain}"
+
+    @property
+    def _preview_domain(self) -> str:
+        """Tenant's preview/base domain (white-label aware); server-provided,
+        falls back to the platform default ``miosa.ai`` only if absent."""
+        return getattr(self._data, "preview_domain", None) or "miosa.ai"
 
     async def start(self) -> ActionResponse:
         data = await self._transport.request(
@@ -576,6 +718,93 @@ class AsyncComputer(AsyncDesktopMixin):
         self._data = ComputerModel.model_validate(data)
         return self
 
+    async def run_agent(
+        self,
+        instruction: str,
+        *,
+        runner: str = "claude-code",
+        provider: str | None = None,
+        model: str | None = None,
+        cwd: str = "/workspace",
+        timeout: int | None = None,
+        wait: bool = True,
+        env: dict[str, str] | None = None,
+        output_format: str | None = None,
+        resume_session_id: str | None = None,
+        json: bool | None = None,
+        output_schema: str | None = None,
+        image: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Run an AI agent inside this Computer."""
+        body = {
+            "instruction": instruction,
+            "target_kind": "computer",
+            "target_id": self._computer_id,
+            "runtime_id": self._computer_id,
+            "computer_id": self._computer_id,
+            "runner": runner,
+            "provider": provider,
+            "model": model,
+            "cwd": cwd,
+            "timeout": timeout,
+            "wait": wait,
+            "env": env,
+            "output_format": output_format,
+            "resume_session_id": resume_session_id,
+            "json": json,
+            "output_schema": output_schema,
+            "image": image,
+            **kwargs,
+        }
+        body = {key: value for key, value in body.items() if value is not None}
+        data = await self._transport.request("POST", "/runs", json_body=body)
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    async def prompt(
+        self,
+        prompt: str,
+        *,
+        provider: str | None = "claude",
+        model: str | None = None,
+        cwd: str = "/workspace",
+        timeout: int | None = None,
+        wait: bool = True,
+        env: dict[str, str] | None = None,
+        output_format: str | None = None,
+        resume_session_id: str | None = None,
+        json: bool | None = None,
+        output_schema: str | None = None,
+        image: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Dispatch a prompt into this Computer through the Agent Runs API."""
+        body = {
+            "prompt": prompt,
+            "target_kind": "computer",
+            "target_id": self._computer_id,
+            "computer_id": self._computer_id,
+            "provider": provider,
+            "model": model,
+            "cwd": cwd,
+            "timeout": timeout,
+            "wait": wait,
+            "env": env,
+            "output_format": output_format,
+            "resume_session_id": resume_session_id,
+            "json": json,
+            "output_schema": output_schema,
+            "image": image,
+            **kwargs,
+        }
+        body = {key: value for key, value in body.items() if value is not None}
+        data = await self._transport.request("POST", "/agent-runs", json_body=body)
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
     async def bash(self, command: str, *, timeout: Optional[int] = None) -> ExecResult:
         return await self._exec.bash(command, timeout=timeout)
 
@@ -604,6 +833,24 @@ class AsyncComputer(AsyncDesktopMixin):
         if isinstance(data, dict) and "data" in data and len(data) <= 2:
             return data["data"]
         return data
+
+    async def viewer_password(self) -> dict:
+        """Return whether the external/raw desktop viewer password is set."""
+        data = await self._transport.request(
+            "GET", f"/computers/{self._computer_id}/viewer-password"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    async def rotate_viewer_password(self) -> dict:
+        """Rotate and return the external/raw desktop viewer password once."""
+        data = await self._transport.request(
+            "POST", f"/computers/{self._computer_id}/viewer-password/rotate"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
 
     async def apps(self) -> list:
         """List apps installed inside the computer."""
@@ -637,6 +884,13 @@ class AsyncComputer(AsyncDesktopMixin):
         if isinstance(data, dict) and "data" in data and len(data) <= 2:
             return data["data"]
         return data
+
+    async def embed(self) -> dict:
+        """Mint a passwordless browser embed URL for authenticated sessions."""
+        data = await self._transport.request("GET", f"/computers/{self._computer_id}/embed")
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
 
     async def metrics(self, window: str = "1h") -> dict:
         """Shortcut for :attr:`metrics_resource`.get()."""

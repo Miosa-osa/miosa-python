@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
+
+
+def _unwrap(data: Any) -> Any:
+    if isinstance(data, dict) and "data" in data:
+        return data["data"]
+    return data
 
 
 class Tokens:
@@ -33,7 +39,7 @@ class Tokens:
         scopes = result["scopes"]
     """
 
-    def __init__(self, transport: "SyncTransport") -> None:
+    def __init__(self, transport: SyncTransport) -> None:
         self._t = transport
 
     def create_scoped(
@@ -42,9 +48,9 @@ class Tokens:
         user_id: str,
         workspace_id: str,
         expires_in_seconds: int = 3600,
-        scopes: Optional[List[str]] = None,
+        scopes: list[str] | None = None,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Mint a short-lived scoped delegation token.
 
         The caller must authenticate with a Layer 1 tenant master key.
@@ -61,7 +67,7 @@ class Tokens:
         if not workspace_id:
             raise ValueError("workspace_id is required")
 
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "user_id": user_id,
             "workspace_id": workspace_id,
             "expires_in_seconds": expires_in_seconds,
@@ -70,13 +76,13 @@ class Tokens:
             body["scopes"] = scopes
         body.update({k: v for k, v in extra.items() if v is not None})
 
-        return self._t.request("POST", "/tokens/scoped", json=body)
+        return _unwrap(self._t.request("POST", "/tokens/scoped", json_body=body))
 
 
 class AsyncTokens:
     """Async variant of :class:`Tokens`."""
 
-    def __init__(self, transport: "AsyncTransport") -> None:
+    def __init__(self, transport: AsyncTransport) -> None:
         self._t = transport
 
     async def create_scoped(
@@ -85,16 +91,16 @@ class AsyncTokens:
         user_id: str,
         workspace_id: str,
         expires_in_seconds: int = 3600,
-        scopes: Optional[List[str]] = None,
+        scopes: list[str] | None = None,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Mint a short-lived scoped delegation token (async)."""
         if not user_id:
             raise ValueError("user_id is required")
         if not workspace_id:
             raise ValueError("workspace_id is required")
 
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "user_id": user_id,
             "workspace_id": workspace_id,
             "expires_in_seconds": expires_in_seconds,
@@ -103,4 +109,4 @@ class AsyncTokens:
             body["scopes"] = scopes
         body.update({k: v for k, v in extra.items() if v is not None})
 
-        return await self._t.request("POST", "/tokens/scoped", json=body)
+        return _unwrap(await self._t.request("POST", "/tokens/scoped", json_body=body))

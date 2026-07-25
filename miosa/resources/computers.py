@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
-from ..types import Computer as ComputerModel, ComputerCreate, ComputerSize, ComputerUpdate
+from ..types import Computer as ComputerModel
+from ..types import ComputerCreate, ComputerSize, ComputerUpdate
 from .computer import AsyncComputer, Computer
 
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
+
+
+def _normalize_computer_size(size: str) -> ComputerSize:
+    return ComputerSize("xl" if size == "xlarge" else size)
 
 
 class ComputersResource:
@@ -23,20 +28,26 @@ class ComputersResource:
         *,
         template_type: str = "miosa-desktop",
         size: str = "small",
-        metadata: Optional[Dict[str, Any]] = None,
-        workspace_id: Optional[str] = None,
-        external_workspace_id: Optional[str] = None,
-        external_project_id: Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        workspace_id: str | None = None,
+        external_workspace_id: str | None = None,
+        external_project_id: str | None = None,
+        agent_runtime_profile_id: str | None = None,
+        agent_profile_id: str | None = None,
+        skip_agent_runtime_profile: bool | None = None,
     ) -> Computer:
         """Create a new computer and return a bound ``Computer`` object."""
         body = ComputerCreate(
             name=name,
             template_type=template_type,
-            size=ComputerSize(size),
+            size=_normalize_computer_size(size),
             metadata=metadata,
             workspace_id=workspace_id,
             external_workspace_id=external_workspace_id,
             external_project_id=external_project_id,
+            agent_runtime_profile_id=agent_runtime_profile_id,
+            agent_profile_id=agent_profile_id,
+            skip_agent_runtime_profile=skip_agent_runtime_profile,
         )
         data = self._transport.request(
             "POST", "/computers", json_body=body.model_dump(exclude_none=True)
@@ -44,9 +55,32 @@ class ComputersResource:
         model = ComputerModel.model_validate(data)
         return Computer(self._transport, model)
 
-    def list(self, *, workspace_id: Optional[str] = None) -> List[Computer]:
+    def viewer_password(self, computer_id: str) -> dict[str, Any]:
+        """Return whether the external/raw desktop viewer password is set.
+
+        Authenticated MIOSA platform users should use the platform desktop
+        entry URL and do not need this password. This is for raw external
+        viewer links such as ``*.computer.miosa.ai/desktop/index.html``.
+        """
+        data = self._transport.request(
+            "GET", f"/computers/{computer_id}/viewer-password"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    def rotate_viewer_password(self, computer_id: str) -> dict[str, Any]:
+        """Rotate and return the external/raw desktop viewer password once."""
+        data = self._transport.request(
+            "POST", f"/computers/{computer_id}/viewer-password/rotate"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    def list(self, *, workspace_id: str | None = None) -> list[Computer]:
         """List all computers, optionally filtered to a workspace."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if workspace_id is not None:
             params["workspace_id"] = workspace_id
         data = self._transport.request("GET", "/computers", params=params or None)
@@ -72,8 +106,8 @@ class ComputersResource:
         self,
         computer_id: str,
         *,
-        name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Computer:
         """Update a computer."""
         body = ComputerUpdate(name=name, metadata=metadata)
@@ -102,19 +136,25 @@ class AsyncComputersResource:
         *,
         template_type: str = "miosa-desktop",
         size: str = "small",
-        metadata: Optional[Dict[str, Any]] = None,
-        workspace_id: Optional[str] = None,
-        external_workspace_id: Optional[str] = None,
-        external_project_id: Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        workspace_id: str | None = None,
+        external_workspace_id: str | None = None,
+        external_project_id: str | None = None,
+        agent_runtime_profile_id: str | None = None,
+        agent_profile_id: str | None = None,
+        skip_agent_runtime_profile: bool | None = None,
     ) -> AsyncComputer:
         body = ComputerCreate(
             name=name,
             template_type=template_type,
-            size=ComputerSize(size),
+            size=_normalize_computer_size(size),
             metadata=metadata,
             workspace_id=workspace_id,
             external_workspace_id=external_workspace_id,
             external_project_id=external_project_id,
+            agent_runtime_profile_id=agent_runtime_profile_id,
+            agent_profile_id=agent_profile_id,
+            skip_agent_runtime_profile=skip_agent_runtime_profile,
         )
         data = await self._transport.request(
             "POST", "/computers", json_body=body.model_dump(exclude_none=True)
@@ -122,8 +162,24 @@ class AsyncComputersResource:
         model = ComputerModel.model_validate(data)
         return AsyncComputer(self._transport, model)
 
-    async def list(self, *, workspace_id: Optional[str] = None) -> List[AsyncComputer]:
-        params: Dict[str, Any] = {}
+    async def viewer_password(self, computer_id: str) -> dict[str, Any]:
+        data = await self._transport.request(
+            "GET", f"/computers/{computer_id}/viewer-password"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    async def rotate_viewer_password(self, computer_id: str) -> dict[str, Any]:
+        data = await self._transport.request(
+            "POST", f"/computers/{computer_id}/viewer-password/rotate"
+        )
+        if isinstance(data, dict) and "data" in data and len(data) <= 2:
+            return data["data"]
+        return data if isinstance(data, dict) else {}
+
+    async def list(self, *, workspace_id: str | None = None) -> list[AsyncComputer]:
+        params: dict[str, Any] = {}
         if workspace_id is not None:
             params["workspace_id"] = workspace_id
         data = await self._transport.request("GET", "/computers", params=params or None)
@@ -148,8 +204,8 @@ class AsyncComputersResource:
         self,
         computer_id: str,
         *,
-        name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AsyncComputer:
         body = ComputerUpdate(name=name, metadata=metadata)
         data = await self._transport.request(
