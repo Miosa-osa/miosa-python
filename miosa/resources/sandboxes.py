@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import json
+import logging
 import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
@@ -60,6 +61,8 @@ from .sandbox_namespaces import (
 if TYPE_CHECKING:
     from .._http import AsyncTransport, SyncTransport
 
+
+_LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TEMPLATE = "miosa-sandbox"
 AGENT_WORKSPACE_TIMEOUT_SEC = 86_400
@@ -552,6 +555,24 @@ def _read_result_data(response: Any) -> dict[str, Any]:
     if isinstance(response, dict):
         return cast(dict[str, Any], response)
     return {}
+
+
+def _report_surviving_release(
+    error: BaseException, release_id: str, cleanup_error: Exception | None
+) -> None:
+    if cleanup_error is None:
+        message = (
+            f"release sandbox {release_id} is still running because cleanup was disabled"
+        )
+    else:
+        message = (
+            f"release sandbox {release_id} was not destroyed and is still billable: "
+            f"{cleanup_error}"
+        )
+        _LOGGER.warning(message)
+    add_note = getattr(error, "add_note", None)
+    if callable(add_note):
+        add_note(message)
 
 
 class Sandbox:
@@ -1181,6 +1202,44 @@ class Sandbox:
         """Deploy this sandbox through the workspace App Engine runtime."""
         kwargs["deployment_type"] = "docker_deploy"
         return self.deploy(**kwargs)
+
+    def deploy_snapshot(
+        self,
+        snapshot_id: str,
+        *,
+        fork_idempotency_key: str | None = None,
+        cleanup: bool = True,
+        **deploy_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Deploy an immutable snapshot without modifying the source sandbox."""
+        release = self.fork(
+            snapshot_id=snapshot_id,
+            name=f"release-{snapshot_id[:12]}",
+            metadata={"release_source_sandbox_id": self.id, "snapshot_id": snapshot_id},
+            idempotency_key=fork_idempotency_key,
+        )
+        def destroy_release() -> Exception | None:
+            if not cleanup:
+                return None
+            try:
+                release.destroy()
+            except Exception as exc:
+                return exc
+            return None
+
+        try:
+            result = release.deploy(**deploy_kwargs)
+        except BaseException as exc:
+            cleanup_error = destroy_release()
+            if not cleanup or cleanup_error is not None:
+                _report_surviving_release(exc, release.id, cleanup_error)
+            raise
+        cleanup_error = destroy_release()
+        result["source_snapshot_id"] = snapshot_id
+        result["release_sandbox_id"] = release.id
+        if cleanup_error is not None:
+            result["release_cleanup_error"] = str(cleanup_error)
+        return result
 
     def fork(
         self,
@@ -2178,6 +2237,44 @@ class AsyncSandbox:
         """Deploy this sandbox through the workspace App Engine runtime."""
         kwargs["deployment_type"] = "docker_deploy"
         return await self.deploy(**kwargs)
+
+    async def deploy_snapshot(
+        self,
+        snapshot_id: str,
+        *,
+        fork_idempotency_key: str | None = None,
+        cleanup: bool = True,
+        **deploy_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Deploy an immutable snapshot without modifying the source sandbox."""
+        release = await self.fork(
+            snapshot_id=snapshot_id,
+            name=f"release-{snapshot_id[:12]}",
+            metadata={"release_source_sandbox_id": self.id, "snapshot_id": snapshot_id},
+            idempotency_key=fork_idempotency_key,
+        )
+        async def destroy_release() -> Exception | None:
+            if not cleanup:
+                return None
+            try:
+                await release.destroy()
+            except Exception as exc:
+                return exc
+            return None
+
+        try:
+            result = await release.deploy(**deploy_kwargs)
+        except BaseException as exc:
+            cleanup_error = await destroy_release()
+            if not cleanup or cleanup_error is not None:
+                _report_surviving_release(exc, release.id, cleanup_error)
+            raise
+        cleanup_error = await destroy_release()
+        result["source_snapshot_id"] = snapshot_id
+        result["release_sandbox_id"] = release.id
+        if cleanup_error is not None:
+            result["release_cleanup_error"] = str(cleanup_error)
+        return result
 
     async def fork(
         self,

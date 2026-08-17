@@ -357,6 +357,30 @@ If `result["state"] == "building"` for a dynamic app, poll
 display the server-returned `url` / `public_url`; do not hardcode
 `preview.miosa.app`, `api.miosa.app`, or `<tenant>.miosa.app`.
 
+To publish the exact snapshot that passed QA instead of whatever the editable
+sandbox holds right now, use `deploy_snapshot`. It forks the snapshot into a
+temporary release sandbox, deploys that fork, and destroys it again, so the
+source sandbox is never mutated:
+
+```python
+snapshot = sb.snapshots.create("qa-approved")
+
+result = sb.deploy_snapshot(
+    snapshot["id"],
+    name="clinic-intake",
+    output_path="/workspace",
+    entrypoint="index.html",
+)
+print(result["source_snapshot_id"], result["release_sandbox_id"])
+```
+
+The result always carries `source_snapshot_id` and `release_sandbox_id` for
+provenance. Pass `cleanup=False` to keep the release sandbox for inspection.
+If the release sandbox could not be destroyed, the deployment still succeeds and
+`result["release_cleanup_error"]` explains why; when the deploy itself fails and
+the release sandbox survives, the raised error carries the same detail so the
+leftover sandbox can be cleaned up by id.
+
 For workspace App Engine, publish from the same sandbox but choose the
 App Engine target:
 

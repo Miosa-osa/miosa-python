@@ -41,6 +41,7 @@ from .resources.email import AsyncEmail, Email
 from .resources.embeddings import AsyncEmbeddings, Embeddings
 from .resources.external_keys import AsyncExternalKeys, ExternalKeys
 from .resources.flat_custom_domains import AsyncFlatCustomDomains, FlatCustomDomains
+from .resources.forge import AsyncForge, Forge
 from .resources.functions import AsyncFunctions, Functions
 from .resources.governance import (
     AsyncBilling,
@@ -143,6 +144,7 @@ class Miosa:
         self.workspace_invites = WorkspaceInvites(self._transport)
         self.org_invites = OrgInvites(self._transport)
         self.organizations = Organizations(self._transport)
+        self.forge = Forge(self._transport)
         self.admin = Admin(self._transport)
         self.open_computers = OpenComputers(self._transport)
         # P1 data + platform primitives
@@ -301,6 +303,7 @@ class AsyncMiosa:
         self.workspace_invites = AsyncWorkspaceInvites(self._transport)
         self.org_invites = AsyncOrgInvites(self._transport)
         self.organizations = AsyncOrganizations(self._transport)
+        self.forge = AsyncForge(self._transport)
         self.admin = AsyncAdmin(self._transport)
         self.open_computers = AsyncOpenComputers(self._transport)
         # P1 data + platform primitives

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from importlib.metadata import version
 
 import pytest
@@ -558,7 +559,10 @@ class TestSandboxes:
         assert export["files"][0]["filename"] == "index.html"
         assert content == b"artifact-bytes"
         assert b"label" in create_route.calls.last.request.content
-        assert b"path=%2Fworkspace%2Fdist%2Findex.html" in download_route.calls.last.request.url.query
+        assert (
+            b"path=%2Fworkspace%2Fdist%2Findex.html"
+            in download_route.calls.last.request.url.query
+        )
 
     def test_paused_persistent_sandbox_allows_backend_auto_resume(self, mock_api, client):
         mock_api.get("/sandboxes/sbx_abc123").respond(
@@ -661,10 +665,101 @@ class TestSandboxes:
         assert sandbox.state == "running"
         assert deployment["deployment_id"] == "dep_1"
         assert docker_deployment["deployment_product"] == "docker_deploy"
-        assert json.loads(docker_route.calls.last.request.content)["deployment_type"] == "docker_deploy"
+        assert (
+            json.loads(docker_route.calls.last.request.content)["deployment_type"]
+            == "docker_deploy"
+        )
         assert b"lines=100" in logs_route.calls.last.request.url.query
         assert b"checkpoint" in create_snapshot_route.calls.last.request.content
         assert b"example.com" in deploy_route.calls[0].request.content
+
+    def test_deploy_snapshot_forks_deploys_and_cleans_release_sandbox(
+        self, mock_api, client
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        fork_route = mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(
+            200, json={"data": {"deployment_id": "dep_release_1"}}
+        )
+        delete_route = mock_api.delete("/sandboxes/sbx_release_1").respond(
+            200, json={"data": {"id": "sbx_release_1", "state": "destroyed"}}
+        )
+
+        result = client.sandboxes.get("sbx_abc123").deploy_snapshot(
+            "snap_approved_1", name="approved-site"
+        )
+
+        assert json.loads(fork_route.calls.last.request.content)["snapshot_id"] == (
+            "snap_approved_1"
+        )
+        assert result["deployment_id"] == "dep_release_1"
+        assert result["source_snapshot_id"] == "snap_approved_1"
+        assert delete_route.calls.call_count == 1
+
+    def test_deploy_snapshot_reports_cleanup_failure_without_masking_deployment(
+        self, mock_api, client
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(
+            200, json={"data": {"deployment_id": "dep_release_1"}}
+        )
+        mock_api.delete("/sandboxes/sbx_release_1").respond(
+            500, json={"detail": "cleanup unavailable"}
+        )
+
+        result = client.sandboxes.get("sbx_abc123").deploy_snapshot(
+            "snap_approved_1", name="approved-site"
+        )
+
+        assert result["deployment_id"] == "dep_release_1"
+        assert result["release_sandbox_id"] == "sbx_release_1"
+        assert "cleanup unavailable" in result["release_cleanup_error"]
+
+    def test_deploy_snapshot_surfaces_orphaned_release_when_cleanup_also_fails(
+        self, mock_api, client, caplog
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(
+            500, json={"detail": "deploy rejected"}
+        )
+        delete_route = mock_api.delete("/sandboxes/sbx_release_1").respond(
+            500, json={"detail": "cleanup unavailable"}
+        )
+
+        with caplog.at_level(logging.WARNING), pytest.raises(ServerError) as excinfo:
+            client.sandboxes.get("sbx_abc123").deploy_snapshot("snap_approved_1")
+
+        assert "deploy rejected" in str(excinfo.value)
+        assert delete_route.calls.call_count >= 1
+        assert "sbx_release_1" in caplog.text
+        assert "cleanup unavailable" in caplog.text
+
+    def test_deploy_snapshot_keeps_provenance_when_deploy_returns_no_content(
+        self, mock_api, client
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(204)
+        mock_api.delete("/sandboxes/sbx_release_1").respond(
+            200, json={"data": {"id": "sbx_release_1", "state": "destroyed"}}
+        )
+
+        result = client.sandboxes.get("sbx_abc123").deploy_snapshot("snap_approved_1")
+
+        assert result == {
+            "source_snapshot_id": "snap_approved_1",
+            "release_sandbox_id": "sbx_release_1",
+        }
 
     def test_build_spec_schema_and_validation_use_template_endpoints(self, mock_api, client):
         mock_api.get("/sandbox-templates/build-spec").respond(
@@ -1391,4 +1486,79 @@ class TestAsyncClient:
         mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
         sandbox = await async_client.sandboxes.connect("sbx_abc123")
         assert sandbox.id == "sbx_abc123"
+        await async_client.close()
+
+    @pytest.mark.asyncio
+    async def test_async_deploy_snapshot_forks_deploys_and_cleans_release_sandbox(
+        self, mock_api, async_client
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        fork_route = mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(
+            200, json={"data": {"deployment_id": "dep_release_1"}}
+        )
+        delete_route = mock_api.delete("/sandboxes/sbx_release_1").respond(
+            200, json={"data": {"id": "sbx_release_1", "state": "destroyed"}}
+        )
+        sandbox = await async_client.sandboxes.get("sbx_abc123")
+
+        result = await sandbox.deploy_snapshot(
+            "snap_approved_1", name="approved-site"
+        )
+
+        assert json.loads(fork_route.calls.last.request.content)["snapshot_id"] == (
+            "snap_approved_1"
+        )
+        assert result["deployment_id"] == "dep_release_1"
+        assert result["source_snapshot_id"] == "snap_approved_1"
+        assert result["release_sandbox_id"] == "sbx_release_1"
+        assert delete_route.calls.call_count == 1
+        await async_client.close()
+
+    @pytest.mark.asyncio
+    async def test_async_deploy_snapshot_reports_cleanup_failure(
+        self, mock_api, async_client
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(
+            200, json={"data": {"deployment_id": "dep_release_1"}}
+        )
+        mock_api.delete("/sandboxes/sbx_release_1").respond(
+            500, json={"detail": "cleanup unavailable"}
+        )
+        sandbox = await async_client.sandboxes.get("sbx_abc123")
+
+        result = await sandbox.deploy_snapshot("snap_approved_1")
+
+        assert result["deployment_id"] == "dep_release_1"
+        assert "cleanup unavailable" in result["release_cleanup_error"]
+        await async_client.close()
+
+    @pytest.mark.asyncio
+    async def test_async_deploy_snapshot_surfaces_orphaned_release_on_failure(
+        self, mock_api, async_client, caplog
+    ):
+        mock_api.get("/sandboxes/sbx_abc123").respond(200, json=SANDBOX_JSON)
+        mock_api.post("/sandboxes/sbx_abc123/fork").respond(
+            200, json={"data": {**SANDBOX_JSON, "id": "sbx_release_1"}}
+        )
+        mock_api.post("/sandboxes/sbx_release_1/deploy").respond(
+            500, json={"detail": "deploy rejected"}
+        )
+        mock_api.delete("/sandboxes/sbx_release_1").respond(
+            500, json={"detail": "cleanup unavailable"}
+        )
+        sandbox = await async_client.sandboxes.get("sbx_abc123")
+
+        with caplog.at_level(logging.WARNING), pytest.raises(ServerError) as excinfo:
+            await sandbox.deploy_snapshot("snap_approved_1")
+
+        assert "deploy rejected" in str(excinfo.value)
+        assert "sbx_release_1" in caplog.text
+        assert "cleanup unavailable" in caplog.text
         await async_client.close()
