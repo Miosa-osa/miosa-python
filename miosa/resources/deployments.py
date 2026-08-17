@@ -5,7 +5,7 @@ publish results; domains route hostnames to versions; rollback repoints a
 deployment at an older ready version.
 
 See:
-- ``docs-site/src/content/docs/deploy/overview.mdx`` for the product model
+- ``miosa-platform/miosa-frontend/src/routes/docs/deploy/overview/+page.md`` for the product model
 - ``miosa-compute/docs/deployments/api-sdk.md`` for the canonical contract
 
 Backend phase status:

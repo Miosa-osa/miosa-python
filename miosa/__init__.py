@@ -44,6 +44,19 @@ from .errors import (
     ValidationError,
 )
 from .resources.computer import AsyncComputer, Computer
+from .resources.forge import (
+    AsyncForge,
+    AsyncForgeRepositories,
+    Forge,
+    ForgeContractError,
+    ForgePolicyViolationError,
+    ForgeRepositories,
+    ForgeRepository,
+    ForgeRepositoryState,
+    ForgeRepositoryVisibility,
+    ForgeStorageError,
+    ForgeUnavailableError,
+)
 from .resources.sandboxes import AsyncSandbox, Sandbox
 from .types import (
     AgentEvent,
@@ -111,6 +124,17 @@ __all__ = [
     "AsyncClient",
     "Computer",
     "AsyncComputer",
+    "Forge",
+    "AsyncForge",
+    "ForgeRepositories",
+    "AsyncForgeRepositories",
+    "ForgeContractError",
+    "ForgePolicyViolationError",
+    "ForgeRepository",
+    "ForgeRepositoryState",
+    "ForgeRepositoryVisibility",
+    "ForgeStorageError",
+    "ForgeUnavailableError",
     "Sandbox",
     "AsyncSandbox",
     # Agent build helpers

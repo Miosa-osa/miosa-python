@@ -30,6 +30,7 @@ from .desktop import AsyncDesktopMixin, DesktopMixin
 from .events import AsyncEvents, Events, EventStream
 from .exec import AsyncExecResource, ExecProcess, ExecResource
 from .files import AsyncFilesResource, FilesResource
+from .forge import AsyncForge, AsyncForgeRepositories, Forge, ForgeRepositories
 from .network_policy import AsyncNetworkPolicy, NetworkPolicy
 from .run_groups import AsyncRunGroups, RunGroups
 from .runs import AsyncRuns, RunEvent, Runs
@@ -66,6 +67,8 @@ __all__ = [
     "AsyncEvents",
     "AsyncExecResource",
     "AsyncFilesResource",
+    "AsyncForge",
+    "AsyncForgeRepositories",
     "AsyncNetworkPolicy",
     "AsyncRuntimeEnv",
     "AsyncSandboxes",
@@ -92,6 +95,8 @@ __all__ = [
     "ExecProcess",
     "ExecResource",
     "FilesResource",
+    "Forge",
+    "ForgeRepositories",
     "NetworkPolicy",
     "RuntimeEnv",
     "Sandboxes",

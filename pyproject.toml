@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "miosa"
-version = "1.3.5"
+version = "1.3.7"
 description = "Official Python SDK for MIOSA - the AI cloud platform for sandboxes, desktop computers, deployments, managed databases, S3 storage, and volumes."
 readme = "README.md"
 license = "MIT"
