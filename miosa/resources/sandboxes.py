@@ -765,6 +765,18 @@ class Sandbox:
         response = self._transport.request("GET", f"/sandboxes/{self.id}/readiness")
         return _read_result_data(response) if response else {}
 
+    def _adopt_ready_state(self) -> None:
+        """Sync the local snapshot after readiness says the sandbox is up.
+
+        Readiness answers from the server; ``_assert_running`` reads this
+        object. Leaving the snapshot behind meant a caller could
+        ``wait_until_ready()``, get ``True``, and have the very next call
+        refused for being 'provisioning' - the sandbox was running the whole
+        time, only this object had not been told.
+        """
+        with contextlib.suppress(Exception):
+            self.refresh()
+
     def wait_until_ready(self, timeout: float = 30.0, stream: bool = True) -> bool:
         """Block until the sandbox reports ready, or *timeout* seconds elapse.
 
@@ -812,6 +824,7 @@ class Sandbox:
                                 else raw_line.decode("utf-8", errors="replace")
                             )
                             if line.startswith("event: ready") or line.startswith("event:ready"):
+                                self._adopt_ready_state()
                                 return True
                             if line.startswith("event: timeout") or line.startswith(
                                 "event:timeout"
@@ -832,6 +845,7 @@ class Sandbox:
             except MiosaError:
                 data = {}
             if data.get("ready") or data.get("status") == "ready":
+                self._adopt_ready_state()
                 return True
             time.sleep(0.01)
         return False
@@ -1798,6 +1812,11 @@ class AsyncSandbox:
         response = await self._transport.request("GET", f"/sandboxes/{self.id}/readiness")
         return _read_result_data(response) if response else {}
 
+    async def _adopt_ready_state(self) -> None:
+        """Async counterpart of :meth:`Sandbox._adopt_ready_state`."""
+        with contextlib.suppress(Exception):
+            await self.refresh()
+
     async def wait_until_ready(self, timeout: float = 30.0, stream: bool = True) -> bool:
         """Async counterpart of :meth:`Sandbox.wait_until_ready`."""
         if stream:
@@ -1831,6 +1850,7 @@ class AsyncSandbox:
                                 else raw_line.decode("utf-8", errors="replace")
                             )
                             if line.startswith("event: ready") or line.startswith("event:ready"):
+                                await self._adopt_ready_state()
                                 return True
                             if line.startswith("event: timeout") or line.startswith(
                                 "event:timeout"
@@ -1851,6 +1871,7 @@ class AsyncSandbox:
             except MiosaError:
                 data = {}
             if data.get("ready") or data.get("status") == "ready":
+                await self._adopt_ready_state()
                 return True
             await asyncio.sleep(0.01)
         return False
